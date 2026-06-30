@@ -44,6 +44,10 @@ public sealed class DailyCoaching
     public int? DoneThisWeek { get; set; }
     public double? PlannedKmThisWeek { get; set; }
     public double? DoneKmThisWeek { get; set; }
+    public int? PlannedLastWeek { get; set; }
+    public int? DoneLastWeek { get; set; }
+    public double? PlannedKmLastWeek { get; set; }
+    public double? DoneKmLastWeek { get; set; }
     public double? SleepConsistencyMin { get; set; }
 
     // What was already trained today (so the coach doesn't prescribe a second session).

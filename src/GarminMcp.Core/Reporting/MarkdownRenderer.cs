@@ -26,12 +26,16 @@ public static class MarkdownRenderer
         sb.AppendLine($"_Aktualisiert: {report.GeneratedAtUtc:yyyy-MM-dd HH:mm} UTC_");
         sb.AppendLine();
 
+        AppendStaleness(sb, report, today);
         AppendKpiBar(sb, report, days, today);
         AppendAlerts(sb, report.Alerts);
         AppendCoaching(sb, report);
+        AppendRaceCountdown(sb, report.Coaching);
+        AppendTodaysWorkout(sb, report.Coaching);
         AppendPaceZones(sb, report.Coaching?.Paces);
         AppendLatestDay(sb, days);
         AppendWeek(sb, report, today);
+        AppendWeeklyReview(sb, report, today);
         AppendSeasonBests(sb, report.PersonalBests);
         AppendChartImages(sb, charts);
         AppendDetails(sb, report, days);
@@ -74,6 +78,30 @@ public static class MarkdownRenderer
         sb.AppendLine();
     }
 
+    // ---- Stale-data / auth-failure warning -----------------------------------
+    private static void AppendStaleness(StringBuilder sb, GarminReport report, DateOnly today)
+    {
+        var latest = report.Days
+            .Where(d => d.HasAnyData)
+            .Select(d => DateOnly.TryParse(d.Date, out var dd) ? (DateOnly?)dd : null)
+            .Where(d => d.HasValue).Select(d => d!.Value)
+            .DefaultIfEmpty().Max();
+
+        if (latest == default)
+        {
+            sb.AppendLine("> ⚠️ **Keine Daten** — der letzte Sync hat keine Garmin-Daten geliefert (Token abgelaufen/widerrufen oder API nicht erreichbar?). Prüfe die GitHub-Action.");
+            sb.AppendLine();
+            return;
+        }
+
+        var gap = today.DayNumber - latest.DayNumber;
+        if (gap >= 2)
+        {
+            sb.AppendLine($"> ⚠️ **Daten möglicherweise veraltet** — letzter Datenpunkt {latest:yyyy-MM-dd} (vor {gap} Tagen). Möglicher Sync-/Token-Fehler; prüfe die GitHub-Action.");
+            sb.AppendLine();
+        }
+    }
+
     // ---- Early-warning system ------------------------------------------------
     private static void AppendAlerts(StringBuilder sb, IReadOnlyList<HealthAlert> alerts)
     {
@@ -94,6 +122,116 @@ public static class MarkdownRenderer
             var badge = a.Level switch { AlertLevel.Red => "🔴", AlertLevel.Amber => "🟡", _ => "🔵" };
             sb.AppendLine($"- {badge} {a.Icon} **{a.Title}** — {a.Detail}");
         }
+        sb.AppendLine();
+    }
+
+    // ---- Race countdown (only near the goal race) ----------------------------
+    private static void AppendRaceCountdown(StringBuilder sb, DailyCoaching? c)
+    {
+        if (c?.DaysToRace is not int dtr || dtr < 0 || dtr > 28) return;
+
+        var phase = dtr <= 7 ? "Race Week" : dtr <= 21 ? "Taper" : "Vor-Taper";
+        sb.AppendLine("## 🏁 Race-Countdown");
+        sb.AppendLine();
+        sb.AppendLine($"**Noch {dtr} {(dtr == 1 ? "Tag" : "Tage")}**{(c.RaceDate is null ? "" : $" bis {c.RaceDate}")} · Phase: {phase}");
+        sb.AppendLine();
+        if (c.Race?.MarathonSeconds is int ms)
+        {
+            var line = $"- ⏱️ Prognose {FormatTime(ms)}";
+            if (!string.IsNullOrWhiteSpace(c.Goal)) line += $" · Ziel {c.Goal}";
+            line += GoalVerdict(c);
+            sb.AppendLine(line);
+        }
+        if (c.TaperNote is not null) sb.AppendLine($"- ⏳ {c.TaperNote}");
+        if (c.NextQuality is not null) sb.AppendLine($"- ⚡ Nächste Schärfe: {c.NextQuality.Date} ({DescribePlan(c.NextQuality)})");
+        sb.AppendLine();
+    }
+
+    // ---- Today's structured workout ------------------------------------------
+    private static void AppendTodaysWorkout(StringBuilder sb, DailyCoaching? c)
+    {
+        if (c is null || c.TrainedToday) return; // already trained → handled in the coach block
+        var w = c.PlanToday.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Detail))
+                ?? c.PlanToday.FirstOrDefault(p => p.Type != SessionType.Rest);
+        if (w is null) return;
+
+        sb.AppendLine("## 🏋️ Heutige Einheit");
+        sb.AppendLine();
+        sb.AppendLine($"**{w.Title ?? w.Type.ToString()}**");
+        sb.AppendLine();
+
+        var rendered = false;
+        if (!string.IsNullOrWhiteSpace(w.Detail))
+        {
+            // Detail = "Name [sport] (est): step → step → …". Split on the step separator first,
+            // then strip the header prefix from the first step. Step text only ever has colon-digit
+            // (10:00, 4:30/km) — never ": " — so the last ": " in steps[0] is the header boundary,
+            // even if the workout name itself contains ": ".
+            var steps = w.Detail!.Split(" → ");
+            if (steps.Length > 1)
+            {
+                var sep = steps[0].LastIndexOf(": ", StringComparison.Ordinal);
+                if (sep >= 0) steps[0] = steps[0][(sep + 2)..];
+                foreach (var s in steps) sb.AppendLine($"- {s.Trim()}");
+                rendered = true;
+            }
+            else { sb.AppendLine($"> {w.Detail}"); rendered = true; }
+        }
+        if (!rendered)
+        {
+            var bits = new List<string>();
+            if (w.DistanceKm is double km) bits.Add($"{km:0.#} km");
+            if (w.DurationMin is double m) bits.Add($"{m:0} min");
+            if (bits.Count > 0) sb.AppendLine(string.Join(" · ", bits));
+        }
+        if (!string.IsNullOrWhiteSpace(c.TodayTargetPace))
+        {
+            sb.AppendLine();
+            sb.AppendLine($"🎯 Zieltempo: {c.TodayTargetPace}");
+        }
+        sb.AppendLine();
+    }
+
+    // ---- Weekly review (last completed week) ----------------------------------
+    private static void AppendWeeklyReview(StringBuilder sb, GarminReport report, DateOnly today)
+    {
+        var c = report.Coaching;
+        var (_, prev) = TrainingWeek.Summarize(report.Activities, report.Days, today);
+        if (prev.Sessions == 0 && (c?.PlannedLastWeek ?? 0) == 0) return;
+
+        var offset = ((int)today.DayOfWeek + 6) % 7;
+        var curStart = today.AddDays(-offset);
+        var lastStart = curStart.AddDays(-7);
+        var lastEnd = curStart.AddDays(-1);
+        var beforeStart = curStart.AddDays(-14);
+        var beforeEnd = curStart.AddDays(-8);
+
+        sb.AppendLine("## 📅 Wochenrückblick (letzte Woche)");
+        sb.AppendLine();
+        sb.AppendLine($"- 🏃 {prev.Km:0.#} km in {prev.Sessions} Einheiten (längster {prev.LongestKm:0.#} km) · ⚡ {prev.IntensityMinutes} Intensitätsmin");
+        if (c?.PlannedLastWeek is int pl && pl > 0)
+        {
+            var km = c.PlannedKmLastWeek is double pkm && pkm > 0 ? $" · {c.DoneKmLastWeek ?? 0:0.#}/{pkm:0.#} km" : "";
+            sb.AppendLine($"- ✅ Planerfüllung: {c.DoneLastWeek ?? 0}/{pl} Einheiten{km}");
+        }
+
+        var sleepLast = AvgRange(report.Days, lastStart, lastEnd, d => d.SleepHours);
+        var rhrLast = AvgRange(report.Days, lastStart, lastEnd, d => d.RestingHeartRate);
+        var hrvLast = AvgRange(report.Days, lastStart, lastEnd, d => d.HrvLastNight);
+        if (sleepLast is not null || rhrLast is not null || hrvLast is not null)
+        {
+            var parts = new List<string>();
+            if (sleepLast is double sl) parts.Add($"😴 Ø {sl:0.0} h{Arrow(sl, AvgRange(report.Days, beforeStart, beforeEnd, d => d.SleepHours))}");
+            if (rhrLast is double rl) parts.Add($"❤️ Ø {rl:0} bpm{Arrow(rl, AvgRange(report.Days, beforeStart, beforeEnd, d => d.RestingHeartRate))}");
+            if (hrvLast is double hl) parts.Add($"💓 Ø {hl:0} ms{Arrow(hl, AvgRange(report.Days, beforeStart, beforeEnd, d => d.HrvLastNight))}");
+            sb.AppendLine($"- {string.Join(" · ", parts)} _(vs. Vorwoche)_");
+        }
+
+        var focus = new List<string>();
+        if (c?.PlannedThisWeek is int pt && pt > 0) focus.Add($"{pt} geplante Einheiten");
+        if (c?.NextLongRun is not null) focus.Add($"Longrun {c.NextLongRun.Date}");
+        if (c?.NextQuality is not null) focus.Add($"Schärfe {c.NextQuality.Date}");
+        if (focus.Count > 0) sb.AppendLine($"- 🎯 Fokus diese Woche: {string.Join(" · ", focus)}");
         sb.AppendLine();
     }
 
@@ -365,6 +503,20 @@ public static class MarkdownRenderer
     private static double? Avg(IEnumerable<DayMetrics> days, Func<DayMetrics, int?> selector)
     {
         var v = days.Select(selector).Where(x => x.HasValue).Select(x => (double)x!.Value).ToList();
+        return v.Count > 0 ? v.Average() : null;
+    }
+
+    private static double? AvgRange(IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, int?> sel)
+    {
+        var v = days.Where(d => DateOnly.TryParse(d.Date, out var dd) && dd >= start && dd <= end)
+            .Select(sel).Where(x => x.HasValue).Select(x => (double)x!.Value).ToList();
+        return v.Count > 0 ? v.Average() : null;
+    }
+
+    private static double? AvgRange(IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, double?> sel)
+    {
+        var v = days.Where(d => DateOnly.TryParse(d.Date, out var dd) && dd >= start && dd <= end)
+            .Select(sel).Where(x => x.HasValue).Select(x => x!.Value).ToList();
         return v.Count > 0 ? v.Average() : null;
     }
 

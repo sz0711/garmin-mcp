@@ -20,6 +20,7 @@ var days = GetIntArg(args, "--days") ?? ToInt(Environment.GetEnvironmentVariable
 var outDir = GetArg(args, "--out") ?? Environment.GetEnvironmentVariable("GARMIN_REPORT_OUT") ?? ".";
 var token = Environment.GetEnvironmentVariable("GARMIN_TOKEN");
 var domain = Environment.GetEnvironmentVariable("GARMIN_DOMAIN") ?? "garmin.com";
+var reportToday = ResolveToday();
 
 if (string.IsNullOrWhiteSpace(token))
 {
@@ -47,7 +48,7 @@ try
 
     Console.Error.WriteLine($"[garmin-report] Fetching last {days} day(s) + coaching …");
     var fresh = await ReportBuilder.BuildAsync(
-        service, days, DateOnly.FromDateTime(DateTime.Today), DateTimeOffset.UtcNow, metrics, goal);
+        service, days, reportToday, DateTimeOffset.UtcNow, metrics, goal);
 
     // Optional LLM coach note via GitHub Models (uses the Actions GITHUB_TOKEN; falls back to rules text).
     var ghToken = Environment.GetEnvironmentVariable("GITHUB_MODELS_TOKEN")
@@ -74,7 +75,7 @@ try
     var merged = GarminReport.Merge(existing, fresh);
     var showDays = Math.Max(days, 14);
 
-    var charts = PngCharts.Generate(merged, DateOnly.FromDateTime(DateTime.Today), outDir);
+    var charts = PngCharts.Generate(merged, reportToday, outDir);
     await File.WriteAllTextAsync(dataPath, JsonSerializer.Serialize(merged, jsonOptions));
     await File.WriteAllTextAsync(Path.Combine(outDir, "dashboard.md"), MarkdownRenderer.Render(merged, showDays, charts));
 
@@ -91,6 +92,22 @@ catch (Exception ex)
 {
     Console.Error.WriteLine($"[garmin-report] FAILED: {ex.GetType().Name}: {ex.Message}");
     return 1;
+}
+
+// "Today" in the athlete's timezone (the runner is UTC; near midnight that would otherwise
+// roll the day over too early/late). Override with GARMIN_TZ; falls back to UTC if unknown.
+static DateOnly ResolveToday()
+{
+    var tzId = Environment.GetEnvironmentVariable("GARMIN_TZ") ?? "Europe/Berlin";
+    try
+    {
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz).DateTime);
+    }
+    catch
+    {
+        return DateOnly.FromDateTime(DateTime.UtcNow);
+    }
 }
 
 static string? GetArg(string[] args, string name)

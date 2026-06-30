@@ -65,6 +65,9 @@ public class DashboardLayoutTests
         Assert.Contains("charts/heatmap.png", md);        // training-load calendar
         Assert.Contains("charts/weight.png", md);         // weight trend
         Assert.Contains("charts/marathon.png", md);       // marathon prediction trend
+        Assert.Contains("charts/sleepstages.png", md);    // sleep-stage stacked chart
+        Assert.Contains("🏁 Race-Countdown", md);          // race countdown (26 days out)
+        Assert.Contains("📅 Wochenrückblick", md);         // last-week review
 
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);

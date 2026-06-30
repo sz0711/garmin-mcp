@@ -32,6 +32,7 @@ public static class PngCharts
         ["weight"] = "Körpergewicht über die Zeit. Entscheidend ist der stabile Trend, nicht der einzelne Tag (kurzfristige Schwankungen sind meist Wasser/Glykogen). Starke ungewollte Abnahme kann auf zu hohe Belastung oder Unterversorgung hindeuten.",
         ["marathon"] = "Garmins prognostizierte Marathon-Zeit über die Zeit – niedriger ist schneller. Die grüne Linie ist deine Zielzeit: liegt die Prognose darunter, bist du auf Kurs.",
         ["heatmap"] = "Trainingslast pro Tag der letzten 12 Wochen (Dauer × Intensität) – je dunkler, desto höher. Zeigt auf einen Blick Konstanz, Belastungsblöcke und Ruhetage. Gleichmäßige Muster mit klaren Erholungstagen sind ideal.",
+        ["sleepstages"] = "Schlafphasen pro Nacht, gestapelt: Tiefschlaf (körperliche Regeneration), Leichtschlaf, REM (mentale Erholung) und Wachzeit. Viel Tief- und REM-Schlaf bei wenig Wachphasen spricht für erholsamen Schlaf.",
         ["acwr"] = "Verhältnis akuter (7 Tage) zu chronischer (28 Tage) Belastung. Der grüne Bereich 0,8–1,3 ist optimal; weit darüber (>1,5) steigt das Verletzungsrisiko, darunter verlierst du Form.",
         ["bedtime"] = "Zubettgeh-Uhrzeit über die Zeit. Konstante Zeiten (flache Linie) stabilisieren deinen Rhythmus und verbessern Erholung sowie HRV; stark schwankende Zeiten stören den Schlaf.",
         ["weeklykm"] = "Wöchentliche Laufkilometer als Balken. Achte auf gleichmäßigen Aufbau (Faustregel: max. ca. 10 % mehr pro Woche) mit regelmäßigen Entlastungswochen. Zu steile Sprünge erhöhen das Verletzungsrisiko.",
@@ -99,6 +100,20 @@ public static class PngCharts
         }));
 
         BarChart(Add, "sleep", "😴 Schlaf (h)", labels, days.Select(d => d.SleepHours).ToList(), "#30d158");
+
+        // Sleep stages, stacked (deep / light / REM / awake)
+        var deepH = days.Select(d => d.SleepDeepMin is int v ? (double?)Math.Round(v / 60.0, 2) : null).ToList();
+        var lightH = days.Select(d => d.SleepLightMin is int v ? (double?)Math.Round(v / 60.0, 2) : null).ToList();
+        var remH = days.Select(d => d.SleepRemMin is int v ? (double?)Math.Round(v / 60.0, 2) : null).ToList();
+        var awakeH = days.Select(d => d.SleepAwakeMin is int v ? (double?)Math.Round(v / 60.0, 2) : null).ToList();
+        if (new[] { deepH, lightH, remH }.Any(s => s.Count(x => x.HasValue) >= 2))
+            Add("sleepstages", "🛌 Schlafphasen (h)", f => DrawStacked(f, labels, new[]
+            {
+                new StackSeg("Tief", "#1f6feb", deepH),
+                new StackSeg("Leicht", "#58a6ff", lightH),
+                new StackSeg("REM", "#a371f7", remH),
+                new StackSeg("Wach", "#d0d7de", awakeH),
+            }));
         BarChart(Add, "steps", "👟 Schritte", labels, days.Select(d => d.Steps is int v ? (double?)v : null).ToList(), "#5e5ce6");
         LineChart(Add, "bodybattery", "🔋 Body Battery (Peak)", labels, days.Select(d => d.BodyBatteryHigh is int v ? (double?)v : null).ToList(), "#34c759");
         BarChart(Add, "stress", "😰 Stress (Ø)", labels, days.Select(d => d.StressAvg is int v ? (double?)v : null).ToList(), "#ff375f");
@@ -387,6 +402,93 @@ public static class PngCharts
             lx += 19;
         }
         canvas.DrawText("mehr", lx + 2, legendY, label);
+
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        using var fs = new FileStream(file, FileMode.Create, FileAccess.Write);
+        data.SaveTo(fs);
+    }
+
+    private sealed record StackSeg(string Name, string Color, IReadOnlyList<double?> Values);
+
+    /// <summary>Stacked bar chart (e.g. sleep stages per night).</summary>
+    private static void DrawStacked(string file, IReadOnlyList<string> labels, IReadOnlyList<StackSeg> segs)
+    {
+        var n = labels.Count;
+        double max = 0;
+        for (var i = 0; i < n; i++)
+        {
+            double t = 0;
+            foreach (var s in segs) t += s.Values.Count > i ? s.Values[i] ?? 0 : 0;
+            max = Math.Max(max, t);
+        }
+        if (max <= 0) return;
+        max *= 1.08;
+
+        double plotW = W - PadL - PadR, plotH = H - PadT - PadB;
+        double Y(double v) => PadT + (1 - v / max) * plotH;
+        var slot = plotW / Math.Max(1, n);
+        var bw = (float)(slot * 0.66);
+
+        using var surface = SKSurface.Create(new SKImageInfo(W, H));
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.White);
+
+        using var grid = new SKPaint { Color = new SKColor(0xFF, 0xE3, 0xE3, 0xE6), StrokeWidth = 1, IsAntialias = true };
+        using var text = new SKPaint { Color = new SKColor(0x88, 0x88, 0x8C), TextSize = 17, IsAntialias = true };
+
+        for (var k = 0; k <= 2; k++)
+        {
+            var y = (float)(PadT + k / 2.0 * plotH);
+            var val = max - k / 2.0 * max;
+            canvas.DrawLine(PadL, y, W - PadR, y, grid);
+            var s = Round(val);
+            canvas.DrawText(s, PadL - 6 - text.MeasureText(s), y + 5, text);
+        }
+
+        // x labels — evenly spaced
+        if (n > 0)
+        {
+            var k = Math.Max(2, Math.Min(n, (int)Math.Round(plotW / 130.0)));
+            for (var j = 0; j < k; j++)
+            {
+                var i = (int)Math.Round((double)j * (n - 1) / (k - 1));
+                var lbl = labels[i];
+                var cx = (float)(PadL + i * slot + slot / 2) - text.MeasureText(lbl) / 2;
+                cx = Math.Clamp(cx, PadL, W - PadR - text.MeasureText(lbl));
+                canvas.DrawText(lbl, cx, H - 16, text);
+            }
+        }
+
+        for (var i = 0; i < n; i++)
+        {
+            double acc = 0;
+            var x = (float)(PadL + i * slot + (slot - bw) / 2);
+            foreach (var s in segs)
+            {
+                var v = s.Values.Count > i ? s.Values[i] ?? 0 : 0;
+                if (v <= 0) continue;
+                var y1 = (float)Y(acc + v);
+                var y0 = (float)Y(acc);
+                using var p = new SKPaint { Color = SKColor.Parse(s.Color).WithAlpha(0xE6), IsAntialias = true };
+                canvas.DrawRect(x, y1, bw, y0 - y1, p);
+                acc += v;
+            }
+        }
+
+        // legend
+        using var legendText = new SKPaint { Color = new SKColor(0x55, 0x55, 0x59), TextSize = 16, IsAntialias = true };
+        var lx = (float)(W - PadR);
+        foreach (var s in Enumerable.Reverse(segs.ToList()))
+        {
+            var tw = legendText.MeasureText(s.Name);
+            lx -= tw;
+            canvas.DrawText(s.Name, lx, PadT - 6, legendText);
+            lx -= 8;
+            using var sw = new SKPaint { Color = SKColor.Parse(s.Color), IsAntialias = true };
+            canvas.DrawRect(lx - 14, PadT - 18, 12, 12, sw);
+            lx -= 14 + 14;
+        }
 
         using var image = surface.Snapshot();
         using var data = image.Encode(SKEncodedImageFormat.Png, 90);

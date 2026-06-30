@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: System deps for chart rendering (SkiaSharp)
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1 fontconfig
+
+      - name: Restore
+        run: dotnet restore GarminMcp.slnx
+
+      - name: Build
+        run: dotnet build GarminMcp.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test GarminMcp.slnx -c Release --no-build --verbosity normal

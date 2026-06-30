@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   models: read
+  issues: write
 
 concurrency:
   group: garmin-sync
@@ -54,4 +55,19 @@ jobs:
           else
             git commit -m "Update Garmin dashboard ($(date -u '+%Y-%m-%dT%H:%MZ'))"
             git push
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export TITLE="⚠️ Garmin dashboard sync failed"
+          body="The scheduled Garmin sync failed at $(date -u '+%Y-%m-%dT%H:%MZ'). Check the run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID — likely a Garmin token/auth issue or API outage."
+          # Exact-title dedup (free-text search would fuzzy-match unrelated issues and ignore the emoji).
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --json number,title --jq 'map(select(.title==env.TITLE))[0].number // empty')
+          if [ -z "$existing" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$body"
+          else
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
           fi

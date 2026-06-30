@@ -53,7 +53,7 @@ public static class TrainingPlanReader
         IGarminService service, DateOnly today, CancellationToken cancellationToken = default)
     {
         var items = new Dictionary<long, GarminCalendarItem>();
-        foreach (var offset in new[] { 0, 7, 14 })
+        foreach (var offset in new[] { -7, 0, 7, 14 })
         {
             try
             {

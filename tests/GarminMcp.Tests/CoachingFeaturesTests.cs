@@ -107,6 +107,32 @@ public class CoachingFeaturesTests
     }
 
     [Fact]
+    public void Renderer_WarnsOnStaleData()
+    {
+        var report = new GarminReport
+        {
+            GeneratedAtUtc = DateTimeOffset.UnixEpoch,
+            Coaching = new DailyCoaching { Date = "2026-06-30" },
+            Days = new() { new DayMetrics { Date = "2026-06-24", RestingHeartRate = 50 } },
+        };
+        var md = MarkdownRenderer.Render(report, 14);
+        Assert.Contains("veraltet", md);
+    }
+
+    [Fact]
+    public void Renderer_WarnsWhenNoData()
+    {
+        var report = new GarminReport
+        {
+            GeneratedAtUtc = DateTimeOffset.UnixEpoch,
+            Coaching = new DailyCoaching { Date = "2026-06-30" },
+            Days = new() { new DayMetrics { Date = "2026-06-30" } }, // no actual metrics
+        };
+        var md = MarkdownRenderer.Render(report, 14);
+        Assert.Contains("Keine Daten", md);
+    }
+
+    [Fact]
     public void AlertEngine_AllClearWhenNormal()
     {
         var days = new List<DayMetrics>();
