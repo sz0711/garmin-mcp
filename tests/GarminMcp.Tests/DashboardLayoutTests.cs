@@ -38,19 +38,25 @@ public class DashboardLayoutTests
     public void Render_IncludesNewSections_AndWritesSample()
     {
         var report = SampleReport();
-        var md = MarkdownRenderer.Render(report, showDays: 21);
+        var tmp = Path.Combine(Path.GetTempPath(), "garmin-charts-test");
+        var charts = PngCharts.Generate(report, new DateOnly(2026, 6, 30), tmp);
+        var md = MarkdownRenderer.Render(report, showDays: 21, charts);
 
         Assert.Contains("Readiness", md);                 // KPI bar / coach
         Assert.Contains("🗓️ Wochenüberblick", md);
         Assert.Contains("📈 Entwicklung", md);
-        Assert.Contains("Ø7T", md);                       // rolling-average overlay
+        Assert.Contains("Ø7T", md);                       // rolling-average overlay chart caption
         Assert.Contains("<details>", md);                 // collapsible
         Assert.Contains("Phasen: Tief", md);              // sleep stages
-        Assert.Contains("Fitness", md);                   // Form (CTL/ATL) chart + line
+        Assert.Contains("Fitness", md);                   // Form (CTL/ATL)
         Assert.Contains("Planerfüllung", md);             // plan adherence
-        Assert.Contains("Zubettgeh", md);                 // bedtime chart
-        Assert.Contains("pie", md);                       // sport split pie
         Assert.Contains("Schlaf-Konsistenz", md);
+        Assert.Contains("![", md);                        // chart images
+        Assert.Contains("charts/", md);                   // image paths
+
+        // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
+        Assert.NotEmpty(charts);
+        Assert.All(charts, c => Assert.True(new FileInfo(Path.Combine(tmp, c.File)).Length > 0));
 
         // Dump a sample for visual inspection (outside the repo).
         File.WriteAllText(Path.Combine(Path.GetTempPath(), "garmin-dashboard-sample.md"), md);

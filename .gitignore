@@ -14,6 +14,11 @@ garmin-token.json
 ## Local agent / editor config
 .claude/
 
+## Generated dashboard artifacts (belong in the private data repo, not the source)
+/charts/
+/dashboard.md
+/data.json
+
 ## OS
 Thumbs.db
 .DS_Store

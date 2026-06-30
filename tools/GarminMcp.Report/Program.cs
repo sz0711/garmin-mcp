@@ -13,7 +13,7 @@ using GarminMcp.Core.Reporting;
 // Writes/updates in the output folder:
 //   data.json      full accumulated store (history is merged across runs)
 //   dashboard.md   phone-friendly Markdown (GitHub mobile app)
-//   index.html     self-contained HTML (open directly)
+//   charts/*.png   raster trend charts (render in the GitHub mobile app)
 // =====================================================================
 
 var days = GetIntArg(args, "--days") ?? ToInt(Environment.GetEnvironmentVariable("GARMIN_REPORT_DAYS")) ?? 30;
@@ -74,11 +74,12 @@ try
     var merged = GarminReport.Merge(existing, fresh);
     var showDays = Math.Max(days, 14);
 
+    var charts = PngCharts.Generate(merged, DateOnly.FromDateTime(DateTime.Today), outDir);
     await File.WriteAllTextAsync(dataPath, JsonSerializer.Serialize(merged, jsonOptions));
-    await File.WriteAllTextAsync(Path.Combine(outDir, "dashboard.md"), MarkdownRenderer.Render(merged, showDays));
+    await File.WriteAllTextAsync(Path.Combine(outDir, "dashboard.md"), MarkdownRenderer.Render(merged, showDays, charts));
 
     var withData = merged.Days.Count(d => d.HasAnyData);
-    Console.Error.WriteLine($"[garmin-report] OK — {merged.Days.Count} day(s) in store ({withData} with data), {merged.Activities.Count} activities. Wrote data.json, dashboard.md to {Path.GetFullPath(outDir)}");
+    Console.Error.WriteLine($"[garmin-report] OK — {merged.Days.Count} day(s) in store ({withData} with data), {merged.Activities.Count} activities, {charts.Count} charts. Wrote data.json, dashboard.md, charts/ to {Path.GetFullPath(outDir)}");
     return 0;
 }
 catch (GarminServiceException ex)

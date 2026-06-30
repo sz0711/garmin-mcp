@@ -31,6 +31,9 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
+      - name: System deps for chart rendering (SkiaSharp)
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1 fontconfig
+
       - name: Generate dashboard
         env:
           GARMIN_TOKEN: ${{ secrets.GARMIN_TOKEN }}
@@ -45,7 +48,7 @@ jobs:
           rm -rf .src
           git config user.name "garmin-bot"
           git config user.email "garmin-bot@users.noreply.github.com"
-          git add data.json dashboard.md
+          git add data.json dashboard.md charts
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else

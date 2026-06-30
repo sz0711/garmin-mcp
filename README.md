@@ -198,7 +198,7 @@ Without this variable the live tests are skipped (the suite stays hermetic).
 ## Autonomous dashboard (GitHub Actions)
 
 `tools/GarminMcp.Report` generates a phone-friendly Markdown dashboard (`dashboard.md`
-with coloured Mermaid charts + `data.json`) that **acts as a daily coach**: it reads your
+with PNG trend charts in `charts/` + `data.json`) that **acts as a daily coach**: it reads your
 recovery (HRV/RHR/sleep/Body Battery), Garmin Training Readiness/Status/load and your
 marathon training-plan workouts, then produces a daily recommendation (rest / easy /
 moderate / hard) reconciled with the plan, **plus a daily fuelling target** (calories +

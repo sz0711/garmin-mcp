@@ -7,7 +7,7 @@ namespace GarminMcp.Core.Reporting;
 /// <summary>Renders the report as a phone-friendly Markdown dashboard (GitHub mobile app).</summary>
 public static class MarkdownRenderer
 {
-    public static string Render(GarminReport report, int showDays = 14)
+    public static string Render(GarminReport report, int showDays = 14, IReadOnlyList<ChartRef>? charts = null)
     {
         var today = report.Coaching is { } cc && DateOnly.TryParse(cc.Date, out var d0)
             ? d0
@@ -30,7 +30,7 @@ public static class MarkdownRenderer
         AppendCoaching(sb, report);
         AppendLatestDay(sb, days);
         AppendWeek(sb, report, today);
-        AppendCharts(sb, report, today);
+        AppendChartImages(sb, charts);
         AppendDetails(sb, report, days);
 
         return sb.ToString();
@@ -119,131 +119,19 @@ public static class MarkdownRenderer
         }
     }
 
-    // ---- Charts --------------------------------------------------------------
-    private static void AppendCharts(StringBuilder sb, GarminReport report, DateOnly today)
+    // ---- Charts (PNG images; the GitHub mobile app does not render Mermaid) ----------
+    private static void AppendChartImages(StringBuilder sb, IReadOnlyList<ChartRef>? charts)
     {
-        var days = report.Days.OrderBy(d => d.Date, StringComparer.Ordinal).ToList();
-        if (days.Count > 21) days = days.Skip(days.Count - 21).ToList();
-        var labels = days.Select(d => Short(d.Date)).ToList();
-
-        var charts = new StringBuilder();
-
-        // Form / Performance-Management-Chart
-        var (pmc, _, _, _) = LoadModel.Compute(report.Activities, today, 28);
-        if (pmc.Count >= 2)
-        {
-            var pl = pmc.Select(p => Short(p.Date)).ToList();
-            Multi(charts, "🏋️ Form: Fitness vs. Fatigue", "Load", new[] { "#0a84ff", "#ff9f0a" }, pl,
-                new (string, IReadOnlyList<double?>)[]
-                {
-                    ("Fitness", pmc.Select(p => (double?)p.Ctl).ToList()),
-                    ("Fatigue", pmc.Select(p => (double?)p.Atl).ToList()),
-                });
-            Single(charts, "🎚️ Form (TSB = Fitness − Fatigue)", "TSB", "#ffd60a", "line", pl, pmc.Select(p => (double?)p.Tsb).ToList());
-        }
-
-        Single(charts, "🎯 Readiness", "Score", "#5856d6", "line", labels, days.Select(d => d.ReadinessScore is int r ? (double?)r : null).ToList());
-
-        var rhr = days.Select(d => d.RestingHeartRate is int v ? (double?)v : null).ToList();
-        Multi(charts, "❤️ Ruhepuls + Ø7T (bpm)", "bpm", new[] { "#ff5a5f", "#ffc2c4" }, labels,
-            new (string, IReadOnlyList<double?>)[] { ("Wert", rhr), ("Ø7T", Rolling7(rhr)) });
-
-        var hrv = days.Select(d => d.HrvLastNight is int v ? (double?)v : null).ToList();
-        Multi(charts, "💓 HRV + Ø7T (ms)", "ms", new[] { "#0a84ff", "#a9d2ff" }, labels,
-            new (string, IReadOnlyList<double?>)[] { ("Wert", hrv), ("Ø7T", Rolling7(hrv)) });
-
-        Single(charts, "😴 Schlaf (h)", "h", "#30d158", "bar", labels, days.Select(d => d.SleepHours).ToList());
-        Single(charts, "👟 Schritte", "Schritte", "#5e5ce6", "bar", labels, days.Select(d => d.Steps is int v ? (double?)v : null).ToList());
-        Single(charts, "🔋 Body Battery (Peak)", "BB", "#34c759", "line", labels, days.Select(d => d.BodyBatteryHigh is int v ? (double?)v : null).ToList());
-        Single(charts, "😰 Stress (Ø)", "Level", "#ff375f", "bar", labels, days.Select(d => d.StressAvg is int v ? (double?)v : null).ToList());
-        Single(charts, "🫁 VO₂max", "ml/kg/min", "#bf5af2", "line", labels, days.Select(d => d.Vo2Max).ToList());
-        Single(charts, "📊 ACWR (Trainingslast, Ziel 0,8–1,3)", "ratio", "#5e9eff", "line", labels, days.Select(d => d.Acwr).ToList());
-        Single(charts, "🛏️ Zubettgeh-Zeit (Std.)", "Uhr", "#5ac8fa", "line", labels, days.Select(d => d.BedtimeHour).ToList());
-
-        var (weekLabels, weekValues) = WeeklyKm(report.Activities);
-        Single(charts, "🏃 Wochenkilometer (km)", "km", "#ff9f0a", "bar", weekLabels, weekValues);
-
-        // Pie: this week's volume split by sport
-        var (cur, _) = TrainingWeek.Summarize(report.Activities, report.Days, today);
-        if (cur.KmByType.Count > 0)
-        {
-            charts.AppendLine("```mermaid");
-            charts.AppendLine("pie showData title Wochenkilometer nach Sportart");
-            foreach (var kv in cur.KmByType.OrderByDescending(kv => kv.Value))
-                charts.AppendLine($"  \"{kv.Key}\" : {kv.Value.ToString("0.#", CultureInfo.InvariantCulture)}");
-            charts.AppendLine("```");
-            charts.AppendLine();
-        }
-
-        if (charts.Length == 0) return;
+        if (charts is null || charts.Count == 0) return;
         sb.AppendLine("## 📈 Entwicklung");
         sb.AppendLine();
-        sb.Append(charts);
-    }
-
-    private static void Single(StringBuilder charts, string title, string axis, string color, string type,
-        IReadOnlyList<string> labels, IReadOnlyList<double?> values)
-    {
-        var idx = Enumerable.Range(0, labels.Count).Where(i => values[i].HasValue).ToList();
-        if (idx.Count < 2) return;
-        ChartHeader(charts, title, axis, new[] { color }, idx, labels);
-        charts.AppendLine($"  {type} [" + string.Join(", ", idx.Select(i => values[i]!.Value.ToString("0.#", CultureInfo.InvariantCulture))) + "]");
-        charts.AppendLine("```");
-        charts.AppendLine();
-    }
-
-    private static void Multi(StringBuilder charts, string title, string axis, IReadOnlyList<string> colors,
-        IReadOnlyList<string> labels, IReadOnlyList<(string Name, IReadOnlyList<double?> Values)> series)
-    {
-        var idx = Enumerable.Range(0, labels.Count).Where(i => series[0].Values[i].HasValue).ToList();
-        if (idx.Count < 2) return;
-        ChartHeader(charts, title, axis, colors, idx, labels);
-        foreach (var s in series)
-            charts.AppendLine("  line [" + string.Join(", ", idx.Select(i => (s.Values[i] ?? series[0].Values[i] ?? 0).ToString("0.#", CultureInfo.InvariantCulture))) + "]");
-        charts.AppendLine("```");
-        charts.AppendLine();
-    }
-
-    private static void ChartHeader(StringBuilder charts, string title, string axis, IReadOnlyList<string> colors,
-        List<int> idx, IReadOnlyList<string> labels)
-    {
-        charts.AppendLine("```mermaid");
-        charts.AppendLine("%%{init: {\"themeVariables\": {\"xyChart\": {\"plotColorPalette\": \"" + string.Join(",", colors) + "\"}}}}%%");
-        charts.AppendLine("xychart-beta");
-        charts.AppendLine($"  title \"{title}\"");
-        charts.AppendLine("  x-axis [" + string.Join(", ", idx.Select(i => $"\"{labels[i]}\"")) + "]");
-        charts.AppendLine($"  y-axis \"{axis}\"");
-    }
-
-    private static List<double?> Rolling7(IReadOnlyList<double?> values)
-    {
-        var result = new List<double?>(values.Count);
-        for (var i = 0; i < values.Count; i++)
+        foreach (var c in charts)
         {
-            var window = new List<double>();
-            for (var j = Math.Max(0, i - 6); j <= i; j++)
-                if (values[j] is double v) window.Add(v);
-            result.Add(window.Count > 0 ? Math.Round(window.Average(), 1) : null);
+            sb.AppendLine($"**{c.Title}**");
+            sb.AppendLine();
+            sb.AppendLine($"![{c.Title}]({c.File})");
+            sb.AppendLine();
         }
-        return result;
-    }
-
-    private static (List<string> Labels, List<double?> Values) WeeklyKm(IReadOnlyList<ActivitySummary> activities)
-    {
-        var byWeek = new Dictionary<int, double>();
-        foreach (var a in activities)
-        {
-            if (a.DistanceKm is not double km || km <= 0) continue;
-            if (!DateOnly.TryParseExact(a.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) continue;
-            var dt = d.ToDateTime(TimeOnly.MinValue);
-            var key = ISOWeek.GetYear(dt) * 100 + ISOWeek.GetWeekOfYear(dt);
-            byWeek[key] = byWeek.GetValueOrDefault(key) + km;
-        }
-        var ordered = byWeek.OrderBy(kv => kv.Key).ToList();
-        if (ordered.Count > 12) ordered = ordered.Skip(ordered.Count - 12).ToList();
-        return (
-            ordered.Select(kv => "KW" + (kv.Key % 100).ToString("00")).ToList(),
-            ordered.Select(kv => (double?)Math.Round(kv.Value, 1)).ToList());
     }
 
     // ---- Collapsible detail --------------------------------------------------
