@@ -180,6 +180,14 @@ public static class HtmlRenderer
         ChartCard(sb, "💓 HRV (ms)", SvgCharts.Line(labels, days.Select(d => (double?)d.HrvLastNight).ToList(), "#0a84ff"));
         ChartCard(sb, "😴 Schlaf (h)", SvgCharts.Bars(labels, days.Select(d => d.SleepHours).ToList(), "#30d158"));
         ChartCard(sb, "👟 Schritte", SvgCharts.Bars(labels, days.Select(d => (double?)d.Steps).ToList(), "#5e5ce6"));
+        ChartCard(sb, "🔋 Body Battery (Peak)", SvgCharts.Line(labels, days.Select(d => (double?)d.BodyBatteryHigh).ToList(), "#34c759"));
+        ChartCard(sb, "😰 Stress (Ø)", SvgCharts.Bars(labels, days.Select(d => (double?)d.StressAvg).ToList(), "#ff375f"));
+        if (days.Any(d => d.Vo2Max.HasValue))
+            ChartCard(sb, "🫁 VO₂max", SvgCharts.Line(labels, days.Select(d => d.Vo2Max).ToList(), "#bf5af2"));
+        if (days.Any(d => d.Acwr.HasValue))
+            ChartCard(sb, "📊 Trainingslast (ACWR · Ziel 0,8–1,3)", SvgCharts.Line(labels, days.Select(d => d.Acwr).ToList(), "#0a84ff", band: (0.8, 1.3)));
+        if (days.Any(d => d.MarathonSeconds.HasValue))
+            ChartCard(sb, "🏁 Marathon-Prognose (min)", SvgCharts.Line(labels, days.Select(d => d.MarathonSeconds is int m ? (double?)Math.Round(m / 60.0, 1) : null).ToList(), "#ffd60a"));
 
         var (weekLabels, weekValues) = WeeklyKm(report.Activities);
         if (weekValues.Any(v => v.HasValue))

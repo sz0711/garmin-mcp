@@ -12,13 +12,14 @@ public static class SvgCharts
 {
     private const int W = 520, H = 170, PadL = 40, PadR = 12, PadT = 10, PadB = 22;
 
-    public static string Line(IReadOnlyList<string> labels, IReadOnlyList<double?> values, string color, double? baseline = null)
+    public static string Line(IReadOnlyList<string> labels, IReadOnlyList<double?> values, string color, double? baseline = null, (double Lo, double Hi)? band = null)
     {
         var present = values.Where(v => v.HasValue).Select(v => v!.Value).ToList();
         if (present.Count == 0) return Empty();
 
         double min = present.Min(), max = present.Max();
         if (baseline is double b) { min = Math.Min(min, b); max = Math.Max(max, b); }
+        if (band is { } bnd) { min = Math.Min(min, bnd.Lo); max = Math.Max(max, bnd.Hi); }
         (min, max) = Pad(min, max);
 
         var sb = new StringBuilder();
@@ -27,6 +28,12 @@ public static class SvgCharts
 
         double X(int i) => labels.Count <= 1 ? PadL + (W - PadL - PadR) / 2.0 : PadL + (double)i / (labels.Count - 1) * (W - PadL - PadR);
         double Y(double v) => max > min ? PadT + (1 - (v - min) / (max - min)) * (H - PadT - PadB) : (H - PadB + PadT) / 2.0;
+
+        if (band is { } bd)
+        {
+            double yHi = Y(bd.Hi), yLo = Y(bd.Lo);
+            sb.Append($"<rect x=\"{PadL}\" y=\"{F(yHi)}\" width=\"{W - PadL - PadR}\" height=\"{F(yLo - yHi)}\" fill=\"#30d158\" opacity=\"0.14\"/>");
+        }
 
         if (baseline is double bl)
             sb.Append($"<line x1=\"{PadL}\" y1=\"{F(Y(bl))}\" x2=\"{W - PadR}\" y2=\"{F(Y(bl))}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4 3\" opacity=\"0.5\"/>");

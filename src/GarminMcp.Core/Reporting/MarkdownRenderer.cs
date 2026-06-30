@@ -174,6 +174,10 @@ public static class MarkdownRenderer
         Chart("Ruhepuls (bpm)", "bpm", d => (double?)d.RestingHeartRate);
         Chart("HRV (ms)", "ms", d => (double?)d.HrvLastNight);
         Chart("Schlaf (h)", "h", d => d.SleepHours);
+        Chart("Body Battery (Peak)", "BB", d => (double?)d.BodyBatteryHigh);
+        Chart("Stress (Ø)", "Level", d => (double?)d.StressAvg);
+        Chart("VO2max", "ml/kg/min", d => d.Vo2Max);
+        Chart("ACWR (Trainingslast)", "ratio", d => d.Acwr);
 
         if (charts.Length == 0) return;
         sb.AppendLine("## Charts");

@@ -111,6 +111,15 @@ public static class ReportBuilder
             if (metrics is not null && !string.IsNullOrWhiteSpace(displayName))
                 race = await metrics.GetRacePredictionsAsync(displayName!, cancellationToken);
 
+            // Persist today's single-point metrics into the day record so they accumulate over runs.
+            var todayDay = report.Days.FirstOrDefault(d => d.Date == Iso(today));
+            if (todayDay is not null)
+            {
+                todayDay.Vo2Max ??= status?.Vo2Max;
+                todayDay.Acwr ??= status?.Acwr;
+                todayDay.MarathonSeconds ??= race?.MarathonSeconds;
+            }
+
             double? weightKg = null;
             try
             {

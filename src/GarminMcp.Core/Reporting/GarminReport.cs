@@ -17,6 +17,11 @@ public sealed class DayMetrics
     public int? Calories { get; set; }
     public int IntensityMinutes { get; set; }
 
+    // Accumulated single-point-per-day metrics (only fetched for "today" each run; preserved on merge).
+    public double? Vo2Max { get; set; }
+    public double? Acwr { get; set; }
+    public int? MarathonSeconds { get; set; }
+
     public bool HasAnyData =>
         RestingHeartRate is not null || HrvLastNight is not null || SleepHours is not null ||
         Steps is not null || StressAvg is not null || BodyBatteryHigh is not null || Calories is not null;
@@ -51,7 +56,16 @@ public sealed class GarminReport
         foreach (var d in existing?.Days ?? Enumerable.Empty<DayMetrics>())
             days[d.Date] = d;
         foreach (var d in fresh.Days)
+        {
+            // Carry forward accumulated single-point metrics the fresh window doesn't refetch.
+            if (days.TryGetValue(d.Date, out var prev))
+            {
+                d.Vo2Max ??= prev.Vo2Max;
+                d.Acwr ??= prev.Acwr;
+                d.MarathonSeconds ??= prev.MarathonSeconds;
+            }
             days[d.Date] = d;
+        }
 
         var activities = new Dictionary<long, ActivitySummary>();
         foreach (var a in existing?.Activities ?? Enumerable.Empty<ActivitySummary>())
