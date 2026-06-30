@@ -44,7 +44,7 @@ public class CoachEngineTests
     {
         var c = CoachEngine.Evaluate(Today, Days(70, 58, 7.5, 90), null, null, Plan(SessionType.Easy), null);
         Assert.Equal(Readiness.Red, c.Readiness);
-        Assert.Contains(c.Flags, f => f.Contains("Resting HR"));
+        Assert.Contains(c.Flags, f => f.Contains("Ruhepuls"));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class CoachEngineTests
         var c = CoachEngine.Evaluate(Today, Days(60, 58, 5.5, 40), null, null, Plan(SessionType.Quality), null);
         Assert.Equal(Readiness.Red, c.Readiness);
         Assert.Equal(SessionType.Rest, c.Recommended);
-        Assert.Contains(c.Flags, f => f.Contains("illness", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(c.Flags, f => f.Contains("Krankheits", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class CoachEngineTests
     {
         var c = CoachEngine.Evaluate(Today, Days(70, 58, 7.5, 90), null, null, Plan(SessionType.Quality), null);
         Assert.NotEqual(SessionType.Quality, c.Recommended);
-        Assert.Contains("swap", c.PlanNote, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("verschieb", c.PlanNote!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class CoachEngineTests
     {
         var c = CoachEngine.Evaluate(Today, Days(70, 50, 7.5, 90), null, null, Plan(SessionType.Easy, daysToRace: 5), null);
         Assert.NotNull(c.TaperNote);
-        Assert.Contains("Race week", c.TaperNote!);
+        Assert.Contains("Wettkampfwoche", c.TaperNote!);
     }
 
     [Fact]

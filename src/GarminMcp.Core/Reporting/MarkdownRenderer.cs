@@ -34,7 +34,7 @@ public static class MarkdownRenderer
         }
 
         AppendStaleness(sb, report, today);
-        AppendKpiBar(sb, report, days, today);
+        if (hero is null) AppendKpiBar(sb, report, days, today); // the hero card already shows the glance metrics
         AppendAlerts(sb, report.Alerts);
         AppendCoaching(sb, report);
         AppendRaceCountdown(sb, report.Coaching);
@@ -139,7 +139,7 @@ public static class MarkdownRenderer
     {
         if (c?.DaysToRace is not int dtr || dtr < 0 || dtr > 28) return;
 
-        var phase = dtr <= 7 ? "Race Week" : dtr <= 21 ? "Taper" : "Vor-Taper";
+        var phase = dtr <= 7 ? "Wettkampfwoche" : dtr <= 21 ? "Taper" : "Vor-Taper";
         sb.AppendLine("## 🏁 Race-Countdown");
         sb.AppendLine();
         sb.AppendLine($"**Noch {dtr} {(dtr == 1 ? "Tag" : "Tage")}**{(c.RaceDate is null ? "" : $" bis {c.RaceDate}")} · Phase: {phase}");

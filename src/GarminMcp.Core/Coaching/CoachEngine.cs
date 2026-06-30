@@ -102,8 +102,8 @@ public static class CoachEngine
         if (todayM?.HrvLastNight is int hrv && hrvBaseline is double hb && hb > 0)
         {
             hrvPct = (hrv - hb) / hb * 100.0;
-            if (hrvPct <= -7) { red++; flags.Add($"HRV {hrv} ms is {Math.Abs(hrvPct.Value):0}% below your ~{hb:0} ms baseline"); }
-            else if (hrvPct <= -4) { amber++; flags.Add($"HRV {hrv} ms slightly below your ~{hb:0} ms baseline"); }
+            if (hrvPct <= -7) { red++; flags.Add($"HRV {hrv} ms liegt {Math.Abs(hrvPct.Value):0} % unter deiner ~{hb:0}-ms-Baseline"); }
+            else if (hrvPct <= -4) { amber++; flags.Add($"HRV {hrv} ms leicht unter deiner ~{hb:0}-ms-Baseline"); }
         }
 
         // --- Resting HR (vs 7-day average) ---
@@ -112,34 +112,34 @@ public static class CoachEngine
         if (todayM?.RestingHeartRate is int rhr && rhrBaseline is double rb)
         {
             rhrDelta = rhr - rb;
-            if (rhrDelta >= 7) { red++; flags.Add($"Resting HR {rhr} bpm is {rhrDelta:0} bpm above your ~{rb:0} bpm average"); }
-            else if (rhrDelta >= 4) { amber++; flags.Add($"Resting HR {rhr} bpm is mildly elevated (~+{rhrDelta:0})"); }
+            if (rhrDelta >= 7) { red++; flags.Add($"Ruhepuls {rhr} bpm liegt {rhrDelta:0} bpm über deinem ~{rb:0}-bpm-Schnitt"); }
+            else if (rhrDelta >= 4) { amber++; flags.Add($"Ruhepuls {rhr} bpm leicht erhöht (~+{rhrDelta:0})"); }
         }
 
         // --- Sleep ---
         if (todayM?.SleepHours is double sleep)
         {
-            if (sleep < 6) { red++; flags.Add($"Only {sleep:0.0} h sleep last night"); }
-            else if (sleep < 7) { amber++; flags.Add($"{sleep:0.0} h sleep (a bit short)"); }
+            if (sleep < 6) { red++; flags.Add($"Nur {sleep:0.0} h Schlaf letzte Nacht"); }
+            else if (sleep < 7) { amber++; flags.Add($"{sleep:0.0} h Schlaf (etwas wenig)"); }
         }
 
         // --- Body Battery (peak as a proxy for recharge) ---
         if (todayM?.BodyBatteryHigh is int bb)
         {
-            if (bb < 25) { red++; flags.Add($"Body Battery barely recharged (peak {bb})"); }
-            else if (bb < 50) { amber++; flags.Add($"Body Battery only partly recharged (peak {bb})"); }
+            if (bb < 25) { red++; flags.Add($"Body Battery kaum aufgeladen (Peak {bb})"); }
+            else if (bb < 50) { amber++; flags.Add($"Body Battery nur teilweise aufgeladen (Peak {bb})"); }
         }
 
         // --- Acute:Chronic Workload Ratio (caps the day) ---
         if (status?.Acwr is double acwr && acwr > 0)
         {
-            if (acwr > 1.5) { red++; flags.Add($"Training load spiking (ACWR {acwr:0.0} > 1.5) — injury-risk window"); }
-            else if (acwr > 1.3 || acwr < 0.8) { amber++; flags.Add($"Training load ratio off-target (ACWR {acwr:0.0})"); }
+            if (acwr > 1.5) { red++; flags.Add($"Trainingslast-Spitze (ACWR {acwr:0.0} > 1,5) — Verletzungs-Risikofenster"); }
+            else if (acwr > 1.3 || acwr < 0.8) { amber++; flags.Add($"Trainingslast-Verhältnis außerhalb des Ziels (ACWR {acwr:0.0})"); }
         }
 
         // --- Illness pattern ---
         bool illness = rhrDelta >= 7 && hrvPct <= -7 && (todayM?.SleepHours is double s2 && s2 < 6);
-        if (illness) flags.Add("Possible illness/over-reaching pattern (elevated RHR + low HRV + poor sleep)");
+        if (illness) flags.Add("Mögliches Krankheits-/Überlastungsmuster (erhöhter Ruhepuls + niedrige HRV + schlechter Schlaf)");
 
         // --- Roll-up rating ---
         var rating = (red >= 1 || amber >= 3 || illness) ? Readiness.Red
@@ -152,6 +152,7 @@ public static class CoachEngine
             var band = score >= 60 ? Readiness.Green : score >= 40 ? Readiness.Amber : Readiness.Red;
             rating = (Readiness)Math.Max((int)rating, (int)band);
             rationale.Add($"Garmin Training Readiness {score}{(readiness.Level is null ? "" : $" ({readiness.Level})")}.");
+            // (Readiness is a Garmin product term — kept verbatim.)
         }
 
         // --- Reconcile with the plan ---
@@ -163,8 +164,8 @@ public static class CoachEngine
         if (plan.DaysToRace is int dtr && dtr <= 21)
         {
             taperNote = dtr <= 7
-                ? "Race week — keep volume low, stay sharp with short race-pace strides, and trust the taper. Don't add unplanned work."
-                : "Taper phase — volume should drop while you keep a little intensity. Resist the urge to add extra hard sessions.";
+                ? "Wettkampfwoche — Umfang niedrig halten, mit kurzen Steigerungen im Renntempo scharf bleiben und dem Taper vertrauen. Keine ungeplanten Einheiten."
+                : "Taper-Phase — der Umfang sinkt, etwas Intensität bleibt. Widerstehe der Versuchung, harte Extra-Einheiten einzubauen.";
         }
 
         // --- Already trained today? Don't prescribe a second session; pivot to recovery. ---
@@ -200,11 +201,11 @@ public static class CoachEngine
 
         // --- Rationale ---
         if (flags.Count == 0)
-            rationale.Add("Recovery signals are in your normal range.");
+            rationale.Add("Erholungssignale liegen in deinem normalen Bereich.");
         else
-            rationale.Add("Driven by: " + string.Join("; ", flags));
+            rationale.Add("Ausschlaggebend: " + string.Join("; ", flags));
         if (status?.StatusPhrase is { Length: > 0 } sp)
-            rationale.Add($"Training status: {Humanize(sp)}.");
+            rationale.Add($"Trainingsstatus: {Humanize(sp)}.");
 
         var trainedAndDone = completedToday.Count > 0 && planNote?.StartsWith("✅") == true;
         var headline = trainedAndDone
@@ -302,10 +303,10 @@ public static class CoachEngine
             {
                 SessionType.Quality or SessionType.Long or SessionType.Race =>
                     (rest ? SessionType.Rest : SessionType.Easy,
-                     $"Plan calls for {Describe(planned)}, but recovery is red — swap it for {(rest ? "REST" : "very easy")} and shift the key session to a fresher day."),
+                     $"Plan sieht {Describe(planned)} vor, aber die Erholung ist rot — tausche auf {(rest ? "RUHE" : "sehr locker")} und verschiebe die Schlüsseleinheit auf einen frischeren Tag."),
                 SessionType.Easy =>
-                    (rest ? SessionType.Rest : SessionType.Easy, rest ? "Take the easy day as full REST today." : "Keep it truly easy."),
-                _ => (rest ? SessionType.Rest : SessionType.Easy, "Recovery is red — prioritise rest/very easy."),
+                    (rest ? SessionType.Rest : SessionType.Easy, rest ? "Nimm den lockeren Tag heute als kompletten RUHETAG." : "Halte ihn wirklich locker."),
+                _ => (rest ? SessionType.Rest : SessionType.Easy, "Erholung ist rot — Ruhe bzw. sehr locker priorisieren."),
             };
         }
 
@@ -314,20 +315,20 @@ public static class CoachEngine
             return plannedType switch
             {
                 SessionType.Quality =>
-                    (SessionType.Easy, $"Plan calls for {Describe(planned)} — recovery is amber, so REDUCE it (cut intensity/volume) or push it a day."),
+                    (SessionType.Easy, $"Plan sieht {Describe(planned)} vor — Erholung ist gelb, also REDUZIEREN (Intensität/Umfang) oder einen Tag verschieben."),
                 SessionType.Long =>
-                    (SessionType.Long, $"Do the long run ({Describe(planned)}) but at the easy end of pace; drop any embedded race-pace segments."),
-                SessionType.Rest => (SessionType.Rest, "Rest day as planned — let things bounce back."),
-                _ => (SessionType.Easy, "Keep aerobic and conversational today; postpone any quality."),
+                    (SessionType.Long, $"Mach den langen Lauf ({Describe(planned)}), aber am lockeren Ende des Tempos; lass eingebaute Renntempo-Abschnitte weg."),
+                SessionType.Rest => (SessionType.Rest, "Ruhetag wie geplant — lass die Werte zurückkommen."),
+                _ => (SessionType.Easy, "Heute aerob und im Plaudertempo bleiben; Qualität verschieben."),
             };
         }
 
-        // Green
+        // Grün
         return plannedType switch
         {
-            null => (SessionType.Easy, "No session scheduled today — an easy aerobic run or rest both fit."),
-            SessionType.Rest => (SessionType.Rest, "Rest day as planned — recovery looks good, but rest still earns the next hard day."),
-            _ => (planned!.Type, $"Green light — do the planned {Describe(planned)} as prescribed."),
+            null => (SessionType.Easy, "Heute keine Einheit geplant — ein lockerer Dauerlauf oder Ruhe passen beide."),
+            SessionType.Rest => (SessionType.Rest, "Ruhetag wie geplant — Erholung sieht gut aus, aber Ruhe verdient den nächsten harten Tag."),
+            _ => (planned!.Type, $"Grünes Licht — die geplante {Describe(planned)} wie vorgesehen durchziehen."),
         };
     }
 
@@ -336,31 +337,31 @@ public static class CoachEngine
         var color = rating switch { Readiness.Green => "🟢", Readiness.Amber => "🟡", _ => "🔴" };
         var rec = recommended switch
         {
-            SessionType.Rest => "REST",
-            SessionType.Easy => "EASY / RECOVERY",
-            SessionType.Long => "LONG RUN",
-            SessionType.Quality => "QUALITY (hard)",
-            SessionType.Strength => "STRENGTH",
-            SessionType.Race => "RACE",
-            _ => "MODERATE / AEROBIC",
+            SessionType.Rest => "RUHETAG",
+            SessionType.Easy => "LOCKER / ERHOLUNG",
+            SessionType.Long => "LANGER LAUF",
+            SessionType.Quality => "QUALITÄT (hart)",
+            SessionType.Strength => "KRAFT",
+            SessionType.Race => "WETTKAMPF",
+            _ => "MODERAT / AEROB",
         };
         return $"{color} {rec}";
     }
 
     private static string Describe(PlannedWorkout? p) =>
-        p is null ? "the session" :
+        p is null ? "die Einheit" :
         $"{p.Title ?? p.Type.ToString()}{(p.DistanceKm is double km ? $" ({km} km)" : p.DurationMin is double m ? $" ({m:0} min)" : "")}";
 
     private static string Humanize(string phrase) =>
         phrase.Replace('_', ' ').ToLowerInvariant() switch
         {
-            var s when s.StartsWith("productive") => "productive",
-            var s when s.StartsWith("maintaining") => "maintaining",
-            var s when s.StartsWith("recovery") => "recovery",
-            var s when s.StartsWith("detraining") => "detraining",
-            var s when s.StartsWith("unproductive") => "unproductive",
-            var s when s.StartsWith("overreaching") => "over-reaching",
-            var s when s.StartsWith("peaking") => "peaking",
+            var s when s.StartsWith("productive") => "produktiv",
+            var s when s.StartsWith("maintaining") => "erhaltend",
+            var s when s.StartsWith("recovery") => "Erholung",
+            var s when s.StartsWith("detraining") => "Formverlust",
+            var s when s.StartsWith("unproductive") => "unproduktiv",
+            var s when s.StartsWith("overreaching") => "Überlastung",
+            var s when s.StartsWith("peaking") => "Formaufbau (Peaking)",
             var s => s,
         };
 

@@ -321,6 +321,17 @@ public static class PngCharts
         data.SaveTo(fs);
     }
 
+    // Consecutive days up to today with at least one logged activity.
+    private static int ActivityStreak(IReadOnlyList<ActivitySummary> acts, DateOnly today)
+    {
+        var set = acts.Select(a => a.Date).ToHashSet(StringComparer.Ordinal);
+        var d = today;
+        if (!set.Contains(d.ToString("yyyy-MM-dd"))) d = d.AddDays(-1); // today may be unlogged yet
+        var n = 0;
+        while (set.Contains(d.ToString("yyyy-MM-dd"))) { n++; d = d.AddDays(-1); }
+        return n;
+    }
+
     // Per-day training load (TRIMP proxy: duration × HR intensity), summed across activities.
     private static Dictionary<string, double> DailyLoad(IReadOnlyList<ActivitySummary> acts)
     {
@@ -435,9 +446,15 @@ public static class PngCharts
 
         using var title = new SKPaint { Color = sub, TextSize = 22, IsAntialias = true };
         canvas.DrawText($"HEUTE · {today:dd.MM.yyyy}", 28, 44, title);
-        if (c?.DaysToRace is int dtr && dtr >= 0)
+
+        // top-right: streak + race countdown (plain text — no emoji, Linux font safety)
+        var streak = ActivityStreak(report.Activities, today);
+        var meta = new List<string>();
+        if (streak > 0) meta.Add($"Streak {streak} {(streak == 1 ? "Tag" : "Tage")}");
+        if (c?.DaysToRace is int dtr && dtr >= 0) meta.Add($"noch {dtr} {(dtr == 1 ? "Tag" : "Tage")} bis zum Ziel");
+        if (meta.Count > 0)
         {
-            var rt = $"noch {dtr} {(dtr == 1 ? "Tag" : "Tage")} bis zum Ziel";
+            var rt = string.Join("   ·   ", meta);
             canvas.DrawText(rt, w - 28 - title.MeasureText(rt), 44, title);
         }
 
