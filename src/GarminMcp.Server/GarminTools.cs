@@ -1,6 +1,10 @@
 using System.ComponentModel;
+using System.Globalization;
 using Garmin.Connect.Models;
 using GarminMcp.Core;
+using GarminMcp.Core.Coaching;
+using GarminMcp.Core.Metrics;
+using GarminMcp.Core.Reporting;
 using ModelContextProtocol.Server;
 
 namespace GarminMcp.Server;
@@ -140,4 +144,58 @@ public static class GarminTools
     [Description("Get the user's personal records (e.g. fastest 5K, longest run).")]
     public static Task<GarminPersonalRecord[]> GetPersonalRecords(IGarminService garmin, CancellationToken cancellationToken)
         => garmin.GetPersonalRecordsAsync(cancellationToken);
+
+    // --- Coaching ---
+
+    [McpServerTool(Name = "garmin_daily_coaching")]
+    [Description("THE personal-trainer summary for today: readiness (green/amber/red), the recommended session (rest/easy/moderate/hard), the planned marathon-plan workout reconciled with recovery, training status/ACWR/VO2max, race prediction, and the next key workout. Use this to advise the user on what to train today and whether to rest.")]
+    public static async Task<object> GetDailyCoaching(IGarminConnectionProvider provider, CancellationToken cancellationToken)
+    {
+        if (!provider.IsAuthenticated)
+            throw new GarminNotAuthenticatedException(provider.SetupUrl);
+        var goal = Environment.GetEnvironmentVariable("GARMIN_GOAL");
+        var report = await ReportBuilder.BuildAsync(provider.Service, 14,
+            DateOnly.FromDateTime(DateTime.Today), DateTimeOffset.UtcNow, provider.Metrics, goal, cancellationToken);
+        return (object?)report.Coaching ?? new { message = "No coaching available yet (no recent data)." };
+    }
+
+    [McpServerTool(Name = "garmin_training_readiness")]
+    [Description("Garmin Training Readiness for a day: 0-100 score, level, and contributors (sleep, HRV, recovery time, acute load).")]
+    public static async Task<object> GetTrainingReadiness(
+        IGarminConnectionProvider provider, [Description("Day in yyyy-MM-dd")] string date, CancellationToken cancellationToken)
+        => (object?)await RequireMetrics(provider).GetTrainingReadinessAsync(ParseDate(date), cancellationToken)
+           ?? new { message = "No training readiness data for that day." };
+
+    [McpServerTool(Name = "garmin_training_status")]
+    [Description("Garmin Training Status for a day: productive/maintaining/recovery/etc., VO2max, acute & chronic load + ACWR (acute:chronic workload ratio), and aerobic/anaerobic load balance.")]
+    public static async Task<object> GetTrainingStatus(
+        IGarminConnectionProvider provider, [Description("Day in yyyy-MM-dd")] string date, CancellationToken cancellationToken)
+        => (object?)await RequireMetrics(provider).GetTrainingStatusAsync(ParseDate(date), cancellationToken)
+           ?? new { message = "No training status data for that day." };
+
+    [McpServerTool(Name = "garmin_race_predictions")]
+    [Description("Garmin's predicted race times (5K/10K/half/marathon, in seconds).")]
+    public static async Task<object> GetRacePredictions(IGarminConnectionProvider provider, CancellationToken cancellationToken)
+    {
+        var profile = await provider.Service.GetProfileAsync(cancellationToken);
+        return (object?)await RequireMetrics(provider).GetRacePredictionsAsync(profile.DisplayName, cancellationToken)
+            ?? new { message = "No race predictions available." };
+    }
+
+    [McpServerTool(Name = "garmin_scheduled_workouts")]
+    [Description("The training-plan workouts scheduled around today (today + upcoming), incl. the next long run / next quality session and the goal race date.")]
+    public static Task<TrainingPlanView> GetScheduledWorkouts(IGarminConnectionProvider provider, CancellationToken cancellationToken)
+    {
+        if (!provider.IsAuthenticated)
+            throw new GarminNotAuthenticatedException(provider.SetupUrl);
+        return TrainingPlanReader.BuildAsync(provider.Service, DateOnly.FromDateTime(DateTime.Today), cancellationToken);
+    }
+
+    private static GarminMetricsClient RequireMetrics(IGarminConnectionProvider provider)
+        => provider.Metrics ?? throw new GarminNotAuthenticatedException(provider.SetupUrl);
+
+    private static DateOnly ParseDate(string date)
+        => DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d
+            : throw new ArgumentException($"date must be in yyyy-MM-dd format, got '{date}'.", nameof(date));
 }

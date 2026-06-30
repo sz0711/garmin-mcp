@@ -1,6 +1,8 @@
 using System.Text.Json;
 using GarminMcp.Core;
 using GarminMcp.Core.Auth;
+using GarminMcp.Core.Coaching;
+using GarminMcp.Core.Metrics;
 using GarminMcp.Core.Reporting;
 
 // =====================================================================
@@ -38,11 +40,29 @@ var jsonOptions = new JsonSerializerOptions
 try
 {
     using var http = GarminClientFactory.CreateHttpClient();
-    var client = GarminClientFactory.CreateFromToken(GarminTokenBundle.Parse(token), http);
-    var service = new GarminService(client);
+    var context = GarminClientFactory.CreateContextFromToken(GarminTokenBundle.Parse(token), http);
+    var service = new GarminService(GarminClientFactory.CreateClient(context));
+    var metrics = new GarminMetricsClient(context);
+    var goal = Environment.GetEnvironmentVariable("GARMIN_GOAL");
 
-    Console.Error.WriteLine($"[garmin-report] Fetching last {days} day(s) …");
-    var fresh = await ReportBuilder.BuildAsync(service, days, DateOnly.FromDateTime(DateTime.Today), DateTimeOffset.UtcNow);
+    Console.Error.WriteLine($"[garmin-report] Fetching last {days} day(s) + coaching …");
+    var fresh = await ReportBuilder.BuildAsync(
+        service, days, DateOnly.FromDateTime(DateTime.Today), DateTimeOffset.UtcNow, metrics, goal);
+
+    // Optional LLM coach note via GitHub Models (uses the Actions GITHUB_TOKEN; falls back to rules text).
+    var ghToken = Environment.GetEnvironmentVariable("GITHUB_MODELS_TOKEN")
+                  ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+    if (fresh.Coaching is not null && !string.IsNullOrWhiteSpace(ghToken))
+    {
+        using var llmHttp = new HttpClient();
+        var coach = new LlmCoach(llmHttp, ghToken!,
+            Environment.GetEnvironmentVariable("GITHUB_MODELS_ENDPOINT"),
+            Environment.GetEnvironmentVariable("GITHUB_MODELS_MODEL"));
+        fresh.CoachInsight = await coach.GenerateInsightAsync(fresh.Coaching);
+        Console.Error.WriteLine(fresh.CoachInsight is null
+            ? "[garmin-report] LLM insight unavailable; using rule-based text."
+            : "[garmin-report] LLM insight generated.");
+    }
 
     GarminReport? existing = null;
     if (File.Exists(dataPath))

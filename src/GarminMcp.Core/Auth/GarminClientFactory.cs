@@ -28,8 +28,11 @@ public static class GarminClientFactory
         return new HttpClient(handler);
     }
 
-    /// <summary>Token-first: build a data client from a stored credential bundle.</summary>
-    public static IGarminConnectClient CreateFromToken(GarminTokenBundle bundle, HttpClient httpClient)
+    /// <summary>
+    /// Token-first: build the shared <see cref="GarminConnectContext"/> (auth + token
+    /// refresh). Reused for both the typed client and raw metric endpoint calls.
+    /// </summary>
+    public static GarminConnectContext CreateContextFromToken(GarminTokenBundle bundle, HttpClient httpClient)
     {
         ArgumentNullException.ThrowIfNull(bundle);
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -37,9 +40,15 @@ public static class GarminClientFactory
         var sso = new GarminSsoClient(httpClient, bundle.Oauth1.Domain);
         var cache = new RefreshingTokenCache(bundle.Oauth1, sso, bundle.Oauth2);
         var auth = new TokenAuthParameters(bundle.Oauth1.Domain);
-        var context = new GarminConnectContext(httpClient, auth, new NotImplementedMfaCode(), cache);
-        return new GarminConnectClient(context);
+        return new GarminConnectContext(httpClient, auth, new NotImplementedMfaCode(), cache);
     }
+
+    /// <summary>Build a typed data client over an existing context (shares auth + token cache).</summary>
+    public static IGarminConnectClient CreateClient(GarminConnectContext context) => new GarminConnectClient(context);
+
+    /// <summary>Token-first: build a typed data client from a stored credential bundle.</summary>
+    public static IGarminConnectClient CreateFromToken(GarminTokenBundle bundle, HttpClient httpClient)
+        => new GarminConnectClient(CreateContextFromToken(bundle, httpClient));
 
     /// <summary>
     /// Mints a fresh token bundle from email/password (+ MFA if required) and returns

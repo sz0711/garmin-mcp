@@ -1,3 +1,5 @@
+using GarminMcp.Core.Coaching;
+
 namespace GarminMcp.Core.Reporting;
 
 /// <summary>Curated wellness metrics for a single day (nulls = no data that day).</summary>
@@ -37,6 +39,8 @@ public sealed class ActivitySummary
 public sealed class GarminReport
 {
     public DateTimeOffset GeneratedAtUtc { get; set; }
+    public DailyCoaching? Coaching { get; set; }
+    public string? CoachInsight { get; set; }   // optional LLM-written daily note
     public List<DayMetrics> Days { get; set; } = new();
     public List<ActivitySummary> Activities { get; set; } = new();
 
@@ -58,6 +62,8 @@ public sealed class GarminReport
         return new GarminReport
         {
             GeneratedAtUtc = fresh.GeneratedAtUtc,
+            Coaching = fresh.Coaching,
+            CoachInsight = fresh.CoachInsight,
             Days = days.Values.OrderByDescending(d => d.Date, StringComparer.Ordinal).ToList(),
             Activities = activities.Values.OrderByDescending(a => a.Date, StringComparer.Ordinal).ThenByDescending(a => a.Id).ToList(),
         };

@@ -1,5 +1,6 @@
 using Garmin.Connect;
 using GarminMcp.Core.Auth;
+using GarminMcp.Core.Metrics;
 
 namespace GarminMcp.Core;
 
@@ -28,6 +29,9 @@ public interface IGarminConnectionProvider
     string SetupUrl { get; }
     IGarminService Service { get; }
 
+    /// <summary>Raw metrics client (training readiness/status/race) — null until signed in.</summary>
+    GarminMetricsClient? Metrics { get; }
+
     /// <summary>Attempt to connect from configured token/credentials. Never throws.</summary>
     Task InitializeAsync(CancellationToken cancellationToken = default);
 
@@ -47,6 +51,7 @@ public sealed class GarminConnectionProvider : IGarminConnectionProvider
     private readonly object _gate = new();
 
     private IGarminConnectClient? _client;
+    private GarminMetricsClient? _metrics;
     private Session? _session;
 
     public GarminConnectionProvider(HttpClient http, GarminOptions options, string setupUrl, Action<string>? warn = null)
@@ -64,6 +69,8 @@ public sealed class GarminConnectionProvider : IGarminConnectionProvider
 
     public IGarminService Service => _service;
 
+    public GarminMetricsClient? Metrics => _metrics;
+
     private IGarminConnectClient RequireClient() =>
         _client ?? throw new GarminNotAuthenticatedException(SetupUrl);
 
@@ -79,6 +86,7 @@ public sealed class GarminConnectionProvider : IGarminConnectionProvider
         {
             var result = await GarminConnection.ResolveAsync(_options, _http, cancellationToken);
             _client = result.Client;
+            _metrics = new GarminMetricsClient(result.Context);
         }
         catch (Exception ex)
         {
@@ -131,7 +139,9 @@ public sealed class GarminConnectionProvider : IGarminConnectionProvider
         {
             var result = await loginTask;
             var bundle = new GarminTokenBundle { Oauth1 = result.Oauth1, Oauth2 = result.Oauth2 };
-            _client = GarminClientFactory.CreateFromToken(bundle, _http);
+            var context = GarminClientFactory.CreateContextFromToken(bundle, _http);
+            _client = GarminClientFactory.CreateClient(context);
+            _metrics = new GarminMetricsClient(context);
             ClearSession();
             await PersistAsync(bundle);
             return LoginOutcome.Success();

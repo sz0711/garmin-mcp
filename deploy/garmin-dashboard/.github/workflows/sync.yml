@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  models: read
 
 concurrency:
   group: garmin-sync
@@ -33,6 +34,10 @@ jobs:
       - name: Generate dashboard
         env:
           GARMIN_TOKEN: ${{ secrets.GARMIN_TOKEN }}
+          # GitHub Models LLM coach (built-in token; falls back to rule-based text if unavailable)
+          GITHUB_MODELS_TOKEN: ${{ github.token }}
+          # Optional: set a repo variable GARMIN_GOAL (e.g. "sub 4:00") for goal-aware coaching
+          GARMIN_GOAL: ${{ vars.GARMIN_GOAL }}
         run: dotnet run --project .src/tools/GarminMcp.Report -c Release -- --days 30 --out .
 
       - name: Commit & push if changed

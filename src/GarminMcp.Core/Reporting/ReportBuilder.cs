@@ -1,4 +1,6 @@
 using Garmin.Connect.Models;
+using GarminMcp.Core.Coaching;
+using GarminMcp.Core.Metrics;
 
 namespace GarminMcp.Core.Reporting;
 
@@ -11,6 +13,7 @@ public static class ReportBuilder
 {
     public static async Task<GarminReport> BuildAsync(
         IGarminService service, int days, DateOnly today, DateTimeOffset generatedAtUtc,
+        GarminMetricsClient? metrics = null, string? goal = null,
         CancellationToken cancellationToken = default)
     {
         if (days < 1) days = 1;
@@ -92,6 +95,28 @@ public static class ReportBuilder
         catch
         {
             // no activities in range
+        }
+
+        // --- Coaching (best-effort; never aborts the report) ---
+        try
+        {
+            TrainingReadiness? readiness = metrics is null ? null : await metrics.GetTrainingReadinessAsync(today, cancellationToken);
+            TrainingStatusInfo? status = metrics is null ? null : await metrics.GetTrainingStatusAsync(today, cancellationToken);
+
+            string? displayName = null;
+            try { displayName = (await service.GetProfileAsync(cancellationToken)).DisplayName; }
+            catch { /* profile unavailable */ }
+
+            RacePrediction? race = null;
+            if (metrics is not null && !string.IsNullOrWhiteSpace(displayName))
+                race = await metrics.GetRacePredictionsAsync(displayName!, cancellationToken);
+
+            var plan = await TrainingPlanReader.BuildAsync(service, today, cancellationToken);
+            report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal);
+        }
+        catch
+        {
+            // coaching is an enrichment — leave it null on failure
         }
 
         return report;

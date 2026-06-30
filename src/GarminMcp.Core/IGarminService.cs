@@ -54,4 +54,7 @@ public interface IGarminService
 
     /// <summary>The user's personal records.</summary>
     Task<GarminPersonalRecord[]> GetPersonalRecordsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Calendar for the week containing the given date (incl. scheduled plan workouts).</summary>
+    Task<GarminCalendarWeek> GetCalendarWeekAsync(string date, CancellationToken cancellationToken = default);
 }

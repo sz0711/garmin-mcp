@@ -180,6 +180,12 @@ GET /api/garmin/body-battery?startDate=2026-06-25&endDate=2026-06-30
 `garmin_get_activities_by_date`, `garmin_get_activity_details`,
 `garmin_get_personal_records`. Dates use the `yyyy-MM-dd` format.
 
+**Coaching tools** (acts as a personal trainer): `garmin_daily_coaching` (readiness
+green/amber/red, recommended session rest/easy/moderate/hard, planned workout reconciled
+with recovery, next key workout), `garmin_training_readiness`, `garmin_training_status`
+(VO₂max, ACWR/load), `garmin_race_predictions`, `garmin_scheduled_workouts` (marathon
+plan).
+
 ## Live E2E test (optional, with a real token)
 
 ```powershell
@@ -192,9 +198,15 @@ Without this variable the live tests are skipped (the suite stays hermetic).
 ## Autonomous dashboard (GitHub Actions)
 
 `tools/GarminMcp.Report` generates a phone-friendly dashboard (`dashboard.md` +
-self-contained `index.html` + `data.json`). It can run on a schedule via GitHub Actions
-so a private repo holds your data and updates itself. See [`deploy/`](deploy/) for the
-workflow and setup.
+self-contained `index.html` + `data.json`) that **acts as a daily coach**: it reads your
+recovery (HRV/RHR/sleep/Body Battery), Garmin Training Readiness/Status/load and your
+marathon training-plan workouts, then produces a daily recommendation (rest / easy /
+moderate / hard) reconciled with the plan. A natural-language insight is written by
+**GitHub Models** (the workflow's built-in `GITHUB_TOKEN` with `models: read` — no
+separate API key), with a deterministic rule-based fallback. It runs on a schedule via
+GitHub Actions so a private repo holds your data and updates itself. Optional repo
+variable `GARMIN_GOAL` (e.g. "sub 4:00") makes coaching goal-aware. See
+[`deploy/`](deploy/) for the workflow and setup.
 
 ## Troubleshooting
 

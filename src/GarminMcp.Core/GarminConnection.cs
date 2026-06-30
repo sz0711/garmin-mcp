@@ -17,45 +17,50 @@ public static class GarminConnection
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(httpClient);
 
-        // 1) Explicit token (recommended): GARMIN_TOKEN.
+        GarminTokenBundle bundle;
+        CredentialSource source;
+
         if (options.HasToken)
         {
-            var bundle = GarminTokenBundle.Parse(options.Token!);
-            return new(GarminClientFactory.CreateFromToken(bundle, httpClient), bundle, CredentialSource.Token);
+            // 1) Explicit token (recommended): GARMIN_TOKEN.
+            bundle = GarminTokenBundle.Parse(options.Token!);
+            source = CredentialSource.Token;
         }
-
-        // 2) Persisted token file (e.g. a Docker volume) from a previous login.
-        if (!string.IsNullOrWhiteSpace(options.TokenFile) && File.Exists(options.TokenFile))
+        else if (!string.IsNullOrWhiteSpace(options.TokenFile) && File.Exists(options.TokenFile))
         {
-            var bundle = GarminTokenBundle.Parse(await File.ReadAllTextAsync(options.TokenFile, cancellationToken));
-            return new(GarminClientFactory.CreateFromToken(bundle, httpClient), bundle, CredentialSource.TokenFile);
+            // 2) Persisted token file (e.g. a Docker volume) from a previous login.
+            bundle = GarminTokenBundle.Parse(await File.ReadAllTextAsync(options.TokenFile, cancellationToken));
+            source = CredentialSource.TokenFile;
         }
-
-        // 3) Email/password: mint a token once, persist it if a file is configured.
-        if (options.HasCredentials)
+        else if (options.HasCredentials)
         {
+            // 3) Email/password: mint a token once, persist it if a file is configured.
             IMfaCodeProvider mfa = string.IsNullOrWhiteSpace(options.MfaCode)
                 ? new DelegateMfaCodeProvider((Func<string>)(() => throw new GarminServiceException(
                     "Garmin requires an MFA code, but none was provided and the server cannot prompt interactively. " +
                     "Mint a token once with the login tool and set GARMIN_TOKEN instead.")))
                 : new StaticMfaCodeProvider(options.MfaCode!);
 
-            var (client, bundle) = await GarminClientFactory.CreateFromCredentialsAsync(
-                options.Email!, options.Password!, options.Domain, mfa, httpClient, cancellationToken);
-
+            var sso = new GarminSsoClient(httpClient, options.Domain);
+            var login = await sso.LoginAsync(options.Email!, options.Password!, mfa, cancellationToken);
+            bundle = new GarminTokenBundle { Oauth1 = login.Oauth1, Oauth2 = login.Oauth2 };
             if (!string.IsNullOrWhiteSpace(options.TokenFile))
                 await File.WriteAllTextAsync(options.TokenFile, bundle.ToJson(), cancellationToken);
-
-            return new(client, bundle, CredentialSource.Credentials);
+            source = CredentialSource.Credentials;
+        }
+        else
+        {
+            throw new GarminServiceException(
+                "No Garmin credentials configured. Set GARMIN_TOKEN (recommended) or GARMIN_EMAIL + GARMIN_PASSWORD.");
         }
 
-        throw new GarminServiceException(
-            "No Garmin credentials configured. Set GARMIN_TOKEN (recommended) or GARMIN_EMAIL + GARMIN_PASSWORD.");
+        var context = GarminClientFactory.CreateContextFromToken(bundle, httpClient);
+        return new GarminConnectionResult(GarminClientFactory.CreateClient(context), bundle, source, context);
     }
 }
 
 public sealed record GarminConnectionResult(
-    IGarminConnectClient Client, GarminTokenBundle Bundle, CredentialSource Source);
+    IGarminConnectClient Client, GarminTokenBundle Bundle, CredentialSource Source, GarminConnectContext Context);
 
 public enum CredentialSource
 {

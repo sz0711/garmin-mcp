@@ -1,4 +1,5 @@
 using System.Text;
+using GarminMcp.Core.Coaching;
 
 namespace GarminMcp.Core.Reporting;
 
@@ -18,6 +19,8 @@ public static class MarkdownRenderer
         sb.AppendLine();
         sb.AppendLine($"_Aktualisiert: {report.GeneratedAtUtc:yyyy-MM-dd HH:mm} UTC_");
         sb.AppendLine();
+
+        AppendCoaching(sb, report);
 
         var latest = days.FirstOrDefault(d => d.HasAnyData);
         if (latest is not null)
@@ -78,6 +81,70 @@ public static class MarkdownRenderer
         }
 
         return sb.ToString();
+    }
+
+    private static void AppendCoaching(StringBuilder sb, GarminReport report)
+    {
+        var c = report.Coaching;
+        if (c is null) return;
+
+        sb.AppendLine($"## 🧠 Coach — {c.Date}");
+        sb.AppendLine();
+
+        if (!string.IsNullOrWhiteSpace(report.CoachInsight))
+        {
+            sb.AppendLine(report.CoachInsight!.Trim());
+            sb.AppendLine();
+        }
+
+        var score = c.ReadinessScore is int sc
+            ? $"  ·  Readiness {sc}{(c.ReadinessLevel is null ? "" : $" ({c.ReadinessLevel})")}"
+            : "";
+        sb.AppendLine($"**{c.Headline}**{score}");
+        sb.AppendLine();
+
+        foreach (var r in c.Rationale)
+            sb.AppendLine($"- {r}");
+
+        if (c.PlanToday.Count > 0)
+            sb.AppendLine($"- 📋 Plan heute: {string.Join(", ", c.PlanToday.Select(p => p.Title ?? p.Type.ToString()))}{(c.PlanNote is null ? "" : $" — {c.PlanNote}")}");
+        else if (c.PlanNote is not null)
+            sb.AppendLine($"- 📋 {c.PlanNote}");
+
+        if (c.NextLongRun is not null)
+            sb.AppendLine($"- 🛣️ Nächster Longrun: {c.NextLongRun.Date} ({DescribePlan(c.NextLongRun)})");
+        if (c.NextQuality is not null)
+            sb.AppendLine($"- ⚡ Nächste harte Einheit: {c.NextQuality.Date} ({DescribePlan(c.NextQuality)})");
+
+        var statusBits = new List<string>();
+        if (c.TrainingStatus is not null) statusBits.Add($"Status: {c.TrainingStatus}");
+        if (c.Acwr is double acwr) statusBits.Add($"ACWR {acwr:0.0}");
+        if (c.Vo2Max is double v) statusBits.Add($"VO₂max {v:0.0}");
+        if (statusBits.Count > 0) sb.AppendLine($"- 📈 {string.Join(" · ", statusBits)}");
+
+        if (c.RaceDate is not null)
+        {
+            var racePart = $"🏁 Rennen: {c.RaceDate}" + (c.DaysToRace is int d ? $" (in {d} Tagen)" : "");
+            if (c.Race?.MarathonSeconds is int ms) racePart += $" · Marathon-Prognose {FormatTime(ms)}";
+            if (!string.IsNullOrWhiteSpace(c.Goal)) racePart += $" · Ziel {c.Goal}";
+            sb.AppendLine($"- {racePart}");
+        }
+        else if (c.Race?.MarathonSeconds is int ms2)
+        {
+            sb.AppendLine($"- 🏁 Marathon-Prognose {FormatTime(ms2)}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $" · Ziel {c.Goal}")}");
+        }
+
+        if (c.TaperNote is not null) sb.AppendLine($"- ⏳ {c.TaperNote}");
+        sb.AppendLine();
+    }
+
+    private static string DescribePlan(PlannedWorkout p) =>
+        $"{p.Title ?? p.Type.ToString()}{(p.DistanceKm is double km ? $", {km} km" : p.DurationMin is double m ? $", {m:0} min" : "")}";
+
+    internal static string FormatTime(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.Hours > 0 ? $"{ts.Hours}:{ts.Minutes:00}:{ts.Seconds:00}" : $"{ts.Minutes}:{ts.Seconds:00}";
     }
 
     private static string Val(int? v, string unit) => v is null ? "–" : $"{v}{(unit.Length > 0 ? " " + unit : "")}";

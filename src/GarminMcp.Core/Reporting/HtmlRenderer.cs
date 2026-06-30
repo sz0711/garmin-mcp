@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using GarminMcp.Core.Coaching;
 
 namespace GarminMcp.Core.Reporting;
 
@@ -41,6 +42,8 @@ public static class HtmlRenderer
             """);
 
         sb.Append($"<h1>🏃 Garmin Dashboard</h1><p class=\"muted\">Aktualisiert: {report.GeneratedAtUtc:yyyy-MM-dd HH:mm} UTC</p>");
+
+        AppendCoaching(sb, report);
 
         if (latest is not null)
         {
@@ -96,6 +99,58 @@ public static class HtmlRenderer
 
         sb.Append("</body></html>");
         return sb.ToString();
+    }
+
+    private static void AppendCoaching(StringBuilder sb, GarminReport report)
+    {
+        var c = report.Coaching;
+        if (c is null) return;
+
+        var (fg, bg) = c.Readiness switch
+        {
+            Readiness.Green => ("#1e7d34", "#e6f4ea"),
+            Readiness.Amber => ("#8a6d00", "#fff7e6"),
+            _ => ("#b3261e", "#fdecea"),
+        };
+
+        sb.Append($"<div style=\"border-left:5px solid {fg};background:{bg};color:#111;border-radius:.6rem;padding:.8rem 1rem;margin:1rem 0;\">");
+        sb.Append($"<div style=\"font-size:1.2rem;font-weight:700;\">{WebUtility.HtmlEncode(c.Headline)}</div>");
+        if (c.ReadinessScore is int sc)
+            sb.Append($"<div style=\"color:#555;font-size:.85rem;\">Readiness {sc}{(c.ReadinessLevel is null ? "" : " (" + WebUtility.HtmlEncode(c.ReadinessLevel) + ")")}</div>");
+        if (!string.IsNullOrWhiteSpace(report.CoachInsight))
+            sb.Append($"<p style=\"margin:.5rem 0;\">{WebUtility.HtmlEncode(report.CoachInsight)}</p>");
+
+        sb.Append("<ul style=\"margin:.4rem 0 0;padding-left:1.1rem;\">");
+        foreach (var r in c.Rationale)
+            sb.Append($"<li>{WebUtility.HtmlEncode(r)}</li>");
+        if (c.PlanToday.Count > 0)
+            sb.Append($"<li>📋 Plan heute: {WebUtility.HtmlEncode(string.Join(", ", c.PlanToday.Select(p => p.Title ?? p.Type.ToString())))}{(c.PlanNote is null ? "" : " — " + WebUtility.HtmlEncode(c.PlanNote))}</li>");
+        else if (c.PlanNote is not null)
+            sb.Append($"<li>📋 {WebUtility.HtmlEncode(c.PlanNote)}</li>");
+        if (c.NextLongRun is not null)
+            sb.Append($"<li>🛣️ Nächster Longrun: {c.NextLongRun.Date}</li>");
+        if (c.NextQuality is not null)
+            sb.Append($"<li>⚡ Nächste harte Einheit: {c.NextQuality.Date}</li>");
+
+        var statusBits = new List<string>();
+        if (c.TrainingStatus is not null) statusBits.Add($"Status: {c.TrainingStatus}");
+        if (c.Acwr is double acwr) statusBits.Add($"ACWR {acwr:0.0}");
+        if (c.Vo2Max is double v) statusBits.Add($"VO₂max {v:0.0}");
+        if (statusBits.Count > 0) sb.Append($"<li>📈 {WebUtility.HtmlEncode(string.Join(" · ", statusBits))}</li>");
+
+        if (c.RaceDate is not null)
+        {
+            var rp = $"🏁 Rennen: {c.RaceDate}" + (c.DaysToRace is int d ? $" (in {d} Tagen)" : "");
+            if (c.Race?.MarathonSeconds is int ms) rp += $" · Marathon-Prognose {MarkdownRenderer.FormatTime(ms)}";
+            if (!string.IsNullOrWhiteSpace(c.Goal)) rp += $" · Ziel {c.Goal}";
+            sb.Append($"<li>{WebUtility.HtmlEncode(rp)}</li>");
+        }
+        else if (c.Race?.MarathonSeconds is int ms2)
+        {
+            sb.Append($"<li>🏁 Marathon-Prognose {MarkdownRenderer.FormatTime(ms2)}</li>");
+        }
+        if (c.TaperNote is not null) sb.Append($"<li>⏳ {WebUtility.HtmlEncode(c.TaperNote)}</li>");
+        sb.Append("</ul></div>");
     }
 
     private static void Tile(StringBuilder sb, string label, int? value, string unit) =>

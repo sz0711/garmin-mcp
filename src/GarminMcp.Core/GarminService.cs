@@ -111,6 +111,9 @@ public sealed class GarminService : IGarminService
             return await Client.GetPersonalRecord(displayName, cancellationToken);
         }, "personal records");
 
+    public Task<GarminCalendarWeek> GetCalendarWeekAsync(string date, CancellationToken cancellationToken = default) =>
+        Guard(() => Client.GetCalendarByWeek(DateOnly.FromDateTime(ParseDate(date, nameof(date))), cancellationToken), "calendar week");
+
     private static DateTime ParseDate(string date, string paramName)
     {
         if (DateTime.TryParseExact(date, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))

@@ -29,6 +29,11 @@ public class McpServerIntegrationTests
         "garmin_get_activities_by_date",
         "garmin_get_activity_details",
         "garmin_get_personal_records",
+        "garmin_daily_coaching",
+        "garmin_training_readiness",
+        "garmin_training_status",
+        "garmin_race_predictions",
+        "garmin_scheduled_workouts",
     };
 
     [Fact]

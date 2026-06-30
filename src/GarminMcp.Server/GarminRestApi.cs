@@ -1,4 +1,7 @@
+using System.Globalization;
 using GarminMcp.Core;
+using GarminMcp.Core.Coaching;
+using GarminMcp.Core.Reporting;
 
 namespace GarminMcp.Server;
 
@@ -29,5 +32,30 @@ public static class GarminRestApi
         api.MapGet("/activities-by-date", (IGarminService g, string startDate, string endDate, string? activityType, CancellationToken ct) => g.GetActivitiesByDateAsync(startDate, endDate, activityType, ct));
         api.MapGet("/activities/{activityId:long}", (IGarminService g, long activityId, CancellationToken ct) => g.GetActivityDetailsAsync(activityId, ct));
         api.MapGet("/personal-records", (IGarminService g, CancellationToken ct) => g.GetPersonalRecordsAsync(ct));
+
+        // Coaching
+        api.MapGet("/coaching", async (IGarminConnectionProvider p, CancellationToken ct) =>
+        {
+            if (!p.IsAuthenticated) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
+            var goal = Environment.GetEnvironmentVariable("GARMIN_GOAL");
+            var r = await ReportBuilder.BuildAsync(p.Service, 14, DateOnly.FromDateTime(DateTime.Today), DateTimeOffset.UtcNow, p.Metrics, goal, ct);
+            return Results.Json((object?)r.Coaching ?? new { message = "No coaching available yet." });
+        });
+        api.MapGet("/scheduled-workouts", (IGarminConnectionProvider p, CancellationToken ct) =>
+            TrainingPlanReader.BuildAsync(p.Service, DateOnly.FromDateTime(DateTime.Today), ct));
+        api.MapGet("/training-readiness", async (IGarminConnectionProvider p, string date, CancellationToken ct) =>
+            (object?)(p.Metrics is null ? null : await p.Metrics.GetTrainingReadinessAsync(Day(date), ct)) ?? new { message = "no data" });
+        api.MapGet("/training-status", async (IGarminConnectionProvider p, string date, CancellationToken ct) =>
+            (object?)(p.Metrics is null ? null : await p.Metrics.GetTrainingStatusAsync(Day(date), ct)) ?? new { message = "no data" });
+        api.MapGet("/race-predictions", async (IGarminConnectionProvider p, CancellationToken ct) =>
+        {
+            if (p.Metrics is null) return Results.Json(new { message = "not signed in" });
+            var profile = await p.Service.GetProfileAsync(ct);
+            return Results.Json((object?)await p.Metrics.GetRacePredictionsAsync(profile.DisplayName, ct) ?? new { message = "no data" });
+        });
     }
+
+    private static DateOnly Day(string date) =>
+        DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d : throw new ArgumentException($"date must be yyyy-MM-dd, got '{date}'.", nameof(date));
 }
