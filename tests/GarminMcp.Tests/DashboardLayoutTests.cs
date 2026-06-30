@@ -70,6 +70,7 @@ public class DashboardLayoutTests
         Assert.Contains("📅 Wochenrückblick", md);         // last-week review
         Assert.Contains("charts/hero.png", md);           // designed hero summary card
         Assert.Contains("📈 Trends (4 Wochen)", md);       // 4-week trend digest
+        Assert.Contains("📆 Woche voraus", md);            // upcoming planned sessions
 
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);
@@ -123,7 +124,16 @@ public class DashboardLayoutTests
         var race = new RacePrediction { FiveKSeconds = 1290, TenKSeconds = 2700, HalfMarathonSeconds = 6000, MarathonSeconds = 13500 };
         var coaching = CoachEngine.Evaluate(
             new DateOnly(2026, 6, 30), days, new TrainingReadiness { Score = 72, Level = "MODERATE" }, status,
-            new TrainingPlanView { Today = { new PlannedWorkout { Date = "2026-06-30", Type = SessionType.Quality, Title = "Tempo 10k", DistanceKm = 10 } }, DaysToRace = 26, RaceDate = "2026-07-26" },
+            new TrainingPlanView
+            {
+                Today = { new PlannedWorkout { Date = "2026-06-30", Type = SessionType.Quality, Title = "Tempo 10k", DistanceKm = 10 } },
+                Upcoming =
+                {
+                    new PlannedWorkout { Date = "2026-07-02", Type = SessionType.Quality, Title = "Intervalle 5×1k", DistanceKm = 8 },
+                    new PlannedWorkout { Date = "2026-07-05", Type = SessionType.Long, Title = "Long Run", DistanceKm = 20 },
+                },
+                DaysToRace = 26, RaceDate = "2026-07-26",
+            },
             race, goal: "sub 3:45", weightKg: 70, activities: activities);
         coaching.Ctl = 46; coaching.Atl = 41; coaching.Tsb = 5;
         coaching.PlannedThisWeek = 4; coaching.DoneThisWeek = 3;

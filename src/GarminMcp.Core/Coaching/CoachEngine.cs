@@ -22,6 +22,7 @@ public sealed class DailyCoaching
     public List<string> Rationale { get; set; } = new();
     public List<string> Flags { get; set; } = new();
     public List<PlannedWorkout> PlanToday { get; set; } = new();
+    public List<PlannedWorkout> Upcoming { get; set; } = new();
     public string? PlanNote { get; set; }
     public PlannedWorkout? NextLongRun { get; set; }
     public PlannedWorkout? NextQuality { get; set; }
@@ -235,6 +236,7 @@ public static class CoachEngine
             Rationale = rationale,
             Flags = flags,
             PlanToday = plan.Today,
+            Upcoming = plan.Upcoming,
             PlanNote = planNote,
             NextLongRun = plan.NextLongRun,
             NextQuality = plan.NextQuality,

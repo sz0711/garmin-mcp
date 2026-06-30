@@ -39,6 +39,7 @@ public static class MarkdownRenderer
         AppendCoaching(sb, report);
         AppendRaceCountdown(sb, report.Coaching);
         AppendTodaysWorkout(sb, report.Coaching);
+        AppendUpcoming(sb, report.Coaching, today);
         AppendPaceZones(sb, report.Coaching?.Paces);
         AppendLatestDay(sb, days);
         AppendWeek(sb, report, today);
@@ -199,6 +200,40 @@ public static class MarkdownRenderer
         }
         sb.AppendLine();
     }
+
+    // ---- Week ahead (upcoming planned sessions) ------------------------------
+    private static void AppendUpcoming(StringBuilder sb, DailyCoaching? c, DateOnly today)
+    {
+        if (c is null || c.Upcoming.Count == 0) return;
+        var horizon = today.AddDays(7);
+        var rows = c.Upcoming
+            .Where(p => DateOnly.TryParse(p.Date, out var d) && d > today && d <= horizon)
+            .OrderBy(p => p.Date, StringComparer.Ordinal)
+            .Take(8)
+            .ToList();
+        if (rows.Count == 0) return;
+
+        sb.AppendLine("## 📆 Woche voraus");
+        sb.AppendLine();
+        foreach (var p in rows)
+        {
+            var when = DateOnly.TryParse(p.Date, out var d) ? $"{Weekday(d)} {d:dd.MM.}" : p.Date;
+            sb.AppendLine($"- **{when}** {SessionIcon(p.Type)} {DescribePlan(p)}");
+        }
+        sb.AppendLine();
+    }
+
+    private static string Weekday(DateOnly d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Mo", DayOfWeek.Tuesday => "Di", DayOfWeek.Wednesday => "Mi",
+        DayOfWeek.Thursday => "Do", DayOfWeek.Friday => "Fr", DayOfWeek.Saturday => "Sa", _ => "So",
+    };
+
+    private static string SessionIcon(SessionType t) => t switch
+    {
+        SessionType.Rest => "😴", SessionType.Easy => "🟢", SessionType.Long => "🛣️",
+        SessionType.Quality => "⚡", SessionType.Strength => "💪", SessionType.Race => "🏁", _ => "🏃",
+    };
 
     // ---- Weekly review (last completed week) ----------------------------------
     private static void AppendWeeklyReview(StringBuilder sb, GarminReport report, DateOnly today)
