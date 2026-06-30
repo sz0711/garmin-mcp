@@ -58,9 +58,12 @@ public sealed class GarminMetricsClient
     public async Task<TrainingReadiness?> GetTrainingReadinessAsync(DateOnly date, CancellationToken cancellationToken = default)
     {
         using var doc = await GetJsonAsync($"/metrics-service/metrics/trainingreadiness/{Iso(date)}", cancellationToken);
-        if (doc is null) return null;
-        var root = doc.RootElement;
+        return doc is null ? null : ParseReadiness(doc.RootElement);
+    }
 
+    /// <summary>Parses the trainingreadiness payload (array of input contexts, or a single object).</summary>
+    public static TrainingReadiness? ParseReadiness(JsonElement root)
+    {
         JsonElement entry;
         if (root.ValueKind == JsonValueKind.Array)
         {
@@ -93,8 +96,12 @@ public sealed class GarminMetricsClient
     public async Task<TrainingStatusInfo?> GetTrainingStatusAsync(DateOnly date, CancellationToken cancellationToken = default)
     {
         using var doc = await GetJsonAsync($"/metrics-service/metrics/trainingstatus/aggregated/{Iso(date)}", cancellationToken);
-        if (doc is null) return null;
-        var root = doc.RootElement;
+        return doc is null ? null : ParseStatus(doc.RootElement);
+    }
+
+    /// <summary>Parses the aggregated trainingstatus payload (nested per-device DTOs).</summary>
+    public static TrainingStatusInfo? ParseStatus(JsonElement root)
+    {
         var info = new TrainingStatusInfo();
 
         if (TryProp(root, "mostRecentTrainingStatus", out var mrts) &&
@@ -132,8 +139,12 @@ public sealed class GarminMetricsClient
     {
         if (string.IsNullOrWhiteSpace(displayName)) return null;
         using var doc = await GetJsonAsync($"/metrics-service/metrics/racepredictions/latest/{Uri.EscapeDataString(displayName)}", cancellationToken);
-        if (doc is null) return null;
-        var root = doc.RootElement;
+        return doc is null ? null : ParseRace(doc.RootElement);
+    }
+
+    /// <summary>Parses the racepredictions payload (array of one, or a single object).</summary>
+    public static RacePrediction? ParseRace(JsonElement root)
+    {
         var e = root.ValueKind == JsonValueKind.Array
             ? (root.GetArrayLength() > 0 ? root[0] : default)
             : root;
