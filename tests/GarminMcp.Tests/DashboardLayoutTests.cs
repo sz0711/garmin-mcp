@@ -72,6 +72,9 @@ public class DashboardLayoutTests
         Assert.Contains("📈 Trends (4 Wochen)", md);       // 4-week trend digest
         Assert.Contains("📆 Woche voraus", md);            // upcoming planned sessions
         Assert.Contains("Solide Woche", md);              // weekly LLM review narrative
+        Assert.Contains("charts/sleepscore.png", md);     // sleep-score chart
+        Assert.Contains("Schlaf-Score", md);              // sleep score in trends
+        Assert.Contains("/100", md);                       // sleep score in latest day
 
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);
@@ -104,6 +107,7 @@ public class DashboardLayoutTests
                 IntensityMinutes = (i % 3 == 0) ? 45 : 10,
                 BedtimeHour = Math.Round(23.0 + rng[i] * 0.15, 2),
                 WeightKg = Math.Round(71.5 - i * 0.04, 1),
+                SleepScore = 78 + rng[i],
             });
         }
         // accumulated metrics for the most recent days

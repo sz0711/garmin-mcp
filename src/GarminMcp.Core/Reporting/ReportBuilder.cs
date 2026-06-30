@@ -67,6 +67,7 @@ public static class ReportBuilder
                     m.SleepHours = Math.Round(seconds / 3600.0, 1);
                 if (dto is not null)
                 {
+                    m.SleepScore = dto.SleepScores?.Overall?.Value is { } sv && sv > 0 ? (int)Math.Round(Convert.ToDouble(sv)) : null;
                     m.SleepDeepMin = Minutes(dto.DeepSleepSeconds);
                     m.SleepLightMin = Minutes(dto.LightSleepSeconds);
                     m.SleepRemMin = Minutes(dto.RemSleepSeconds);

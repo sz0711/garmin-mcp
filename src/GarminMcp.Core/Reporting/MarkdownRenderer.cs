@@ -302,6 +302,7 @@ public static class MarkdownRenderer
 
         AvgRow("❤️ Ruhepuls", d => d.RestingHeartRate, " bpm", lowerBetter: true);
         AvgRow("💓 HRV", d => d.HrvLastNight, " ms", lowerBetter: false);
+        AvgRow("😴 Schlaf-Score", d => d.SleepScore, "", lowerBetter: false);
 
         var wCur = AvgRange(report.Days, rStart, rEnd, d => d.WeightKg);
         if (wCur is double wc)
@@ -399,7 +400,7 @@ public static class MarkdownRenderer
         sb.AppendLine();
         sb.AppendLine($"- ❤️ Ruhepuls: {Val(latest.RestingHeartRate, "bpm")}");
         sb.AppendLine($"- 💓 HRV (letzte Nacht): {Val(latest.HrvLastNight, "ms")}{(latest.HrvStatus is null ? "" : $" ({latest.HrvStatus})")}");
-        sb.AppendLine($"- 😴 Schlaf: {Val(latest.SleepHours, "h")}");
+        sb.AppendLine($"- 😴 Schlaf: {Val(latest.SleepHours, "h")}{(latest.SleepScore is int ss ? $" · Score {ss}/100" : "")}");
         if (latest.SleepDeepMin is not null || latest.SleepLightMin is not null || latest.SleepRemMin is not null)
             sb.AppendLine($"  - 🛌 Phasen: Tief {Dur(latest.SleepDeepMin)} · Leicht {Dur(latest.SleepLightMin)} · REM {Dur(latest.SleepRemMin)} · Wach {Dur(latest.SleepAwakeMin)}");
         sb.AppendLine($"- 🔋 Body Battery: {(latest.BodyBatteryLow is null && latest.BodyBatteryHigh is null ? "–" : $"{latest.BodyBatteryLow?.ToString() ?? "?"} → {latest.BodyBatteryHigh?.ToString() ?? "?"}")}");

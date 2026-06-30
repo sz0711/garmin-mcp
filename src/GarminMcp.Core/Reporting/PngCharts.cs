@@ -34,6 +34,7 @@ public static class PngCharts
         ["marathon"] = "Garmins prognostizierte Marathon-Zeit über die Zeit – niedriger ist schneller. Die grüne Linie ist deine Zielzeit: liegt die Prognose darunter, bist du auf Kurs.",
         ["heatmap"] = "Trainingslast pro Tag der letzten 12 Wochen (Dauer × Intensität) – je dunkler, desto höher. Zeigt auf einen Blick Konstanz, Belastungsblöcke und Ruhetage. Gleichmäßige Muster mit klaren Erholungstagen sind ideal.",
         ["sleepstages"] = "Schlafphasen pro Nacht, gestapelt: Tiefschlaf (körperliche Regeneration), Leichtschlaf, REM (mentale Erholung) und Wachzeit. Viel Tief- und REM-Schlaf bei wenig Wachphasen spricht für erholsamen Schlaf.",
+        ["sleepscore"] = "Garmins Schlaf-Score (0–100) bündelt Dauer, Tiefe, Erholung und Unruhe der Nacht zu einem Wert. Konstant hohe Werte sind ein starkes Zeichen guter Regeneration.",
         ["acwr"] = "Verhältnis akuter (7 Tage) zu chronischer (28 Tage) Belastung. Der grüne Bereich 0,8–1,3 ist optimal; weit darüber (>1,5) steigt das Verletzungsrisiko, darunter verlierst du Form.",
         ["bedtime"] = "Zubettgeh-Uhrzeit über die Zeit. Konstante Zeiten (flache Linie) stabilisieren deinen Rhythmus und verbessern Erholung sowie HRV; stark schwankende Zeiten stören den Schlaf.",
         ["weeklykm"] = "Wöchentliche Laufkilometer als Balken. Achte auf gleichmäßigen Aufbau (Faustregel: max. ca. 10 % mehr pro Woche) mit regelmäßigen Entlastungswochen. Zu steile Sprünge erhöhen das Verletzungsrisiko.",
@@ -118,6 +119,7 @@ public static class PngCharts
                 new StackSeg("REM", "#a371f7", remH),
                 new StackSeg("Wach", "#d0d7de", awakeH),
             }));
+        LineChart(Add, "sleepscore", "😴 Schlaf-Score (0–100)", labels, days.Select(d => d.SleepScore is int v ? (double?)v : null).ToList(), "#30d158");
         BarChart(Add, "steps", "👟 Schritte", labels, days.Select(d => d.Steps is int v ? (double?)v : null).ToList(), "#5e5ce6");
         LineChart(Add, "bodybattery", "🔋 Body Battery (Peak)", labels, days.Select(d => d.BodyBatteryHigh is int v ? (double?)v : null).ToList(), "#34c759");
         BarChart(Add, "stress", "😰 Stress (Ø)", labels, days.Select(d => d.StressAvg is int v ? (double?)v : null).ToList(), "#ff375f");

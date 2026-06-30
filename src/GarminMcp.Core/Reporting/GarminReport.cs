@@ -17,6 +17,7 @@ public sealed class DayMetrics
     public int? Calories { get; set; }
     public int IntensityMinutes { get; set; }
 
+    public int? SleepScore { get; set; }       // Garmin sleep score 0-100
     public int? SleepDeepMin { get; set; }
     public int? SleepLightMin { get; set; }
     public int? SleepRemMin { get; set; }
@@ -90,6 +91,7 @@ public sealed class GarminReport
                 d.HrvLastNight ??= prev.HrvLastNight;
                 d.HrvStatus ??= prev.HrvStatus;
                 d.SleepHours ??= prev.SleepHours;
+                d.SleepScore ??= prev.SleepScore;
                 d.SleepDeepMin ??= prev.SleepDeepMin;
                 d.SleepLightMin ??= prev.SleepLightMin;
                 d.SleepRemMin ??= prev.SleepRemMin;
