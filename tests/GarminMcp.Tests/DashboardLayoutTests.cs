@@ -46,6 +46,11 @@ public class DashboardLayoutTests
         Assert.Contains("Ø7T", md);                       // rolling-average overlay
         Assert.Contains("<details>", md);                 // collapsible
         Assert.Contains("Phasen: Tief", md);              // sleep stages
+        Assert.Contains("Fitness", md);                   // Form (CTL/ATL) chart + line
+        Assert.Contains("Planerfüllung", md);             // plan adherence
+        Assert.Contains("Zubettgeh", md);                 // bedtime chart
+        Assert.Contains("pie", md);                       // sport split pie
+        Assert.Contains("Schlaf-Konsistenz", md);
 
         // Dump a sample for visual inspection (outside the repo).
         File.WriteAllText(Path.Combine(Path.GetTempPath(), "garmin-dashboard-sample.md"), md);
@@ -72,6 +77,7 @@ public class DashboardLayoutTests
                 BodyBatteryHigh = 88 + rng[i], BodyBatteryLow = 22 + rng[i],
                 Calories = 2400 + i * 10,
                 IntensityMinutes = (i % 3 == 0) ? 45 : 10,
+                BedtimeHour = Math.Round(23.0 + rng[i] * 0.15, 2),
             });
         }
         // accumulated metrics for the most recent days
@@ -93,6 +99,9 @@ public class DashboardLayoutTests
             new TrainingStatusInfo { StatusPhrase = "PRODUCTIVE_1", Vo2Max = 54, Acwr = 1.1 },
             new TrainingPlanView { Today = { new PlannedWorkout { Date = "2026-06-30", Type = SessionType.Quality, Title = "Tempo 10k" } }, DaysToRace = 26, RaceDate = "2026-07-26" },
             new RacePrediction { MarathonSeconds = 13500 }, goal: "sub 3:45", weightKg: 70);
+        coaching.Ctl = 46; coaching.Atl = 41; coaching.Tsb = 5;
+        coaching.PlannedThisWeek = 4; coaching.DoneThisWeek = 3;
+        coaching.SleepConsistencyMin = 24;
 
         return new GarminReport
         {

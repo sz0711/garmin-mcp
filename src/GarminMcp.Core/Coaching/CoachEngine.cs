@@ -35,6 +35,14 @@ public sealed class DailyCoaching
     public string? Goal { get; set; }
     public string? TaperNote { get; set; }
     public NutritionPlan? Nutrition { get; set; }
+
+    // Enrichments computed by the report builder (where activities are available).
+    public double? Ctl { get; set; }   // Fitness
+    public double? Atl { get; set; }   // Fatigue
+    public double? Tsb { get; set; }   // Form
+    public int? PlannedThisWeek { get; set; }
+    public int? DoneThisWeek { get; set; }
+    public double? SleepConsistencyMin { get; set; }
 }
 
 /// <summary>

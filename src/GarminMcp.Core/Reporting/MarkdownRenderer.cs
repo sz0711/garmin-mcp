@@ -30,7 +30,7 @@ public static class MarkdownRenderer
         AppendCoaching(sb, report);
         AppendLatestDay(sb, days);
         AppendWeek(sb, report, today);
-        AppendCharts(sb, report);
+        AppendCharts(sb, report, today);
         AppendDetails(sb, report, days);
 
         return sb.ToString();
@@ -61,6 +61,9 @@ public static class MarkdownRenderer
 
         var (cur, _) = TrainingWeek.Summarize(report.Activities, report.Days, today);
         if (cur.Km > 0) parts.Add($"🏃 {cur.Km:0.#} km/Wo");
+        if (report.Coaching?.Tsb is double tsb) parts.Add($"🎚️ Form {tsb:+0;-0;0}");
+        var streak = Streak(report.Activities, today);
+        if (streak > 0) parts.Add($"🔥 {streak} {(streak == 1 ? "Tag" : "Tage")} Streak");
         if (report.Coaching?.DaysToRace is int dtr) parts.Add($"🏁 {dtr} T");
 
         if (parts.Count == 0) return;
@@ -117,13 +120,27 @@ public static class MarkdownRenderer
     }
 
     // ---- Charts --------------------------------------------------------------
-    private static void AppendCharts(StringBuilder sb, GarminReport report)
+    private static void AppendCharts(StringBuilder sb, GarminReport report, DateOnly today)
     {
         var days = report.Days.OrderBy(d => d.Date, StringComparer.Ordinal).ToList();
         if (days.Count > 21) days = days.Skip(days.Count - 21).ToList();
         var labels = days.Select(d => Short(d.Date)).ToList();
 
         var charts = new StringBuilder();
+
+        // Form / Performance-Management-Chart
+        var (pmc, _, _, _) = LoadModel.Compute(report.Activities, today, 28);
+        if (pmc.Count >= 2)
+        {
+            var pl = pmc.Select(p => Short(p.Date)).ToList();
+            Multi(charts, "🏋️ Form: Fitness vs. Fatigue", "Load", new[] { "#0a84ff", "#ff9f0a" }, pl,
+                new (string, IReadOnlyList<double?>)[]
+                {
+                    ("Fitness", pmc.Select(p => (double?)p.Ctl).ToList()),
+                    ("Fatigue", pmc.Select(p => (double?)p.Atl).ToList()),
+                });
+            Single(charts, "🎚️ Form (TSB = Fitness − Fatigue)", "TSB", "#ffd60a", "line", pl, pmc.Select(p => (double?)p.Tsb).ToList());
+        }
 
         Single(charts, "🎯 Readiness", "Score", "#5856d6", "line", labels, days.Select(d => d.ReadinessScore is int r ? (double?)r : null).ToList());
 
@@ -141,9 +158,22 @@ public static class MarkdownRenderer
         Single(charts, "😰 Stress (Ø)", "Level", "#ff375f", "bar", labels, days.Select(d => d.StressAvg is int v ? (double?)v : null).ToList());
         Single(charts, "🫁 VO₂max", "ml/kg/min", "#bf5af2", "line", labels, days.Select(d => d.Vo2Max).ToList());
         Single(charts, "📊 ACWR (Trainingslast, Ziel 0,8–1,3)", "ratio", "#5e9eff", "line", labels, days.Select(d => d.Acwr).ToList());
+        Single(charts, "🛏️ Zubettgeh-Zeit (Std.)", "Uhr", "#5ac8fa", "line", labels, days.Select(d => d.BedtimeHour).ToList());
 
         var (weekLabels, weekValues) = WeeklyKm(report.Activities);
         Single(charts, "🏃 Wochenkilometer (km)", "km", "#ff9f0a", "bar", weekLabels, weekValues);
+
+        // Pie: this week's volume split by sport
+        var (cur, _) = TrainingWeek.Summarize(report.Activities, report.Days, today);
+        if (cur.KmByType.Count > 0)
+        {
+            charts.AppendLine("```mermaid");
+            charts.AppendLine("pie showData title Wochenkilometer nach Sportart");
+            foreach (var kv in cur.KmByType.OrderByDescending(kv => kv.Value))
+                charts.AppendLine($"  \"{kv.Key}\" : {kv.Value.ToString("0.#", CultureInfo.InvariantCulture)}");
+            charts.AppendLine("```");
+            charts.AppendLine();
+        }
 
         if (charts.Length == 0) return;
         sb.AppendLine("## 📈 Entwicklung");
@@ -301,6 +331,17 @@ public static class MarkdownRenderer
         if (c.Vo2Max is double v) statusBits.Add($"VO₂max {v:0.0}");
         if (statusBits.Count > 0) sb.AppendLine($"- 📈 {string.Join(" · ", statusBits)}");
 
+        var formBits = new List<string>();
+        if (c.Ctl is double ctl) formBits.Add($"Fitness {ctl:0}");
+        if (c.Atl is double atl) formBits.Add($"Fatigue {atl:0}");
+        if (c.Tsb is double tsb) formBits.Add($"Form {tsb:+0;-0;0} ({FormLabel(tsb)})");
+        if (formBits.Count > 0) sb.AppendLine($"- 🏋️ {string.Join(" · ", formBits)}");
+
+        if (c.PlannedThisWeek is int planned && planned > 0)
+            sb.AppendLine($"- ✅ Planerfüllung diese Woche: {c.DoneThisWeek ?? 0}/{planned}");
+        if (c.SleepConsistencyMin is double scm)
+            sb.AppendLine($"- 🛏️ Schlaf-Konsistenz: ±{scm:0} min (Zubettgeh-Zeit)");
+
         if (c.RaceDate is not null)
         {
             var racePart = $"🏁 Rennen: {c.RaceDate}" + (c.DaysToRace is int d ? $" (in {d} Tagen)" : "");
@@ -354,6 +395,25 @@ public static class MarkdownRenderer
         var v = days.Select(selector).Where(x => x.HasValue).Select(x => (double)x!.Value).ToList();
         return v.Count > 0 ? v.Average() : null;
     }
+
+    private static int Streak(IReadOnlyList<ActivitySummary> activities, DateOnly today)
+    {
+        var set = activities.Select(a => a.Date).ToHashSet();
+        var d = today;
+        if (!set.Contains(d.ToString("yyyy-MM-dd"))) d = d.AddDays(-1); // today may be unlogged yet
+        var n = 0;
+        while (set.Contains(d.ToString("yyyy-MM-dd"))) { n++; d = d.AddDays(-1); }
+        return n;
+    }
+
+    private static string FormLabel(double tsb) => tsb switch
+    {
+        > 15 => "sehr frisch",
+        > 5 => "frisch",
+        >= -10 => "ausbalanciert",
+        >= -20 => "ermüdet",
+        _ => "stark ermüdet",
+    };
 
     private static string Short(string isoDate) => isoDate.Length >= 10 ? isoDate[5..] : isoDate;
     private static string Val(int? v, string unit) => v is null ? "–" : $"{v}{(unit.Length > 0 ? " " + unit : "")}";

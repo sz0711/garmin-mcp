@@ -21,6 +21,8 @@ public sealed class DayMetrics
     public int? SleepLightMin { get; set; }
     public int? SleepRemMin { get; set; }
     public int? SleepAwakeMin { get; set; }
+    public double? BedtimeHour { get; set; }   // local bedtime as decimal hour, shifted to ~18–30 for continuity
+    public string? BedtimeLocal { get; set; }  // "HH:mm" for display
 
     // Accumulated single-point-per-day metrics (only fetched for "today" each run; preserved on merge).
     public double? Vo2Max { get; set; }

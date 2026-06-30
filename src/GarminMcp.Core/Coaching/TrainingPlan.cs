@@ -35,6 +35,7 @@ public sealed class TrainingPlanView
     public bool HasPlan { get; set; }
     public List<PlannedWorkout> Today { get; set; } = new();
     public List<PlannedWorkout> Upcoming { get; set; } = new();
+    public List<PlannedWorkout> AllPlanned { get; set; } = new();
     public PlannedWorkout? NextLongRun { get; set; }
     public PlannedWorkout? NextQuality { get; set; }
     public string? RaceDate { get; set; }
@@ -73,6 +74,8 @@ public static class TrainingPlanReader
             .Select(Map)
             .OrderBy(p => p.Date, StringComparer.Ordinal)
             .ToList();
+
+        view.AllPlanned = planned;
 
         var todayKey = today.ToString("yyyy-MM-dd");
         view.Today = planned.Where(p => p.Date == todayKey).ToList();

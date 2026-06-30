@@ -137,6 +137,12 @@ public sealed class LlmCoach
         if (c.TaperNote is not null) sb.AppendLine($"Taper-Kontext: {c.TaperNote}");
         if (c.Nutrition is { } n)
             sb.AppendLine($"Makro-Ziel heute ({n.DayType}): ~{n.CalorieTarget} kcal — Kohlenhydrate {n.CarbsG} g, Eiweiß {n.ProteinG} g, Fett {n.FatG} g{(n.WeightKg is double w ? $" (Gewicht {w} kg)" : "")}.");
+        if (c.Ctl is double ctl && c.Atl is double atl && c.Tsb is double tsb)
+            sb.AppendLine($"Form (Performance-Management): Fitness/CTL {ctl:0}, Fatigue/ATL {atl:0}, Form/TSB {tsb:+0;-0;0} (positiv = frisch, negativ = ermüdet).");
+        if (c.PlannedThisWeek is int pl && pl > 0)
+            sb.AppendLine($"Plan-Adhärenz diese Woche: {c.DoneThisWeek ?? 0}/{pl} Einheiten erledigt.");
+        if (c.SleepConsistencyMin is double scm)
+            sb.AppendLine($"Schlaf-Konsistenz: ±{scm:0} min Zubettgeh-Variabilität (kleiner = besser).");
         return sb.ToString();
     }
 

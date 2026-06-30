@@ -1,3 +1,4 @@
+using System.Globalization;
 using Garmin.Connect.Models;
 using GarminMcp.Core.Coaching;
 using GarminMcp.Core.Metrics;
@@ -69,6 +70,13 @@ public static class ReportBuilder
                     m.SleepLightMin = Minutes(dto.LightSleepSeconds);
                     m.SleepRemMin = Minutes(dto.RemSleepSeconds);
                     m.SleepAwakeMin = Minutes(dto.AwakeSleepSeconds);
+                    if (dto.SleepStartTimestampLocal > 0)
+                    {
+                        var local = DateTimeOffset.FromUnixTimeMilliseconds(dto.SleepStartTimestampLocal).UtcDateTime;
+                        m.BedtimeLocal = local.ToString("HH:mm");
+                        var hour = local.TimeOfDay.TotalHours;
+                        m.BedtimeHour = Math.Round(hour < 12 ? hour + 24 : hour, 2); // shift past-midnight for continuity
+                    }
                 }
             }
             catch
@@ -149,6 +157,32 @@ public static class ReportBuilder
 
             var plan = await TrainingPlanReader.BuildAsync(service, today, cancellationToken);
             report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal, weightKg);
+
+            if (report.Coaching is { } coaching)
+            {
+                var (_, ctl, atl, tsb) = LoadModel.Compute(report.Activities, today);
+                coaching.Ctl = ctl;
+                coaching.Atl = atl;
+                coaching.Tsb = tsb;
+
+                var weekStart = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+                var weekEnd = weekStart.AddDays(6);
+                coaching.PlannedThisWeek = plan.AllPlanned.Count(p => p.Type != SessionType.Rest && InWeek(p.Date, weekStart, weekEnd));
+                coaching.DoneThisWeek = report.Activities.Count(a => InWeek(a.Date, weekStart, weekEnd));
+
+                var bedtimes = report.Days
+                    .Where(d => d.BedtimeHour.HasValue)
+                    .OrderByDescending(d => d.Date, StringComparer.Ordinal)
+                    .Take(14)
+                    .Select(d => d.BedtimeHour!.Value)
+                    .ToList();
+                if (bedtimes.Count >= 3)
+                {
+                    var mean = bedtimes.Average();
+                    var sd = Math.Sqrt(bedtimes.Select(x => (x - mean) * (x - mean)).Average());
+                    coaching.SleepConsistencyMin = Math.Round(sd * 60, 0);
+                }
+            }
         }
         catch
         {
@@ -161,4 +195,8 @@ public static class ReportBuilder
     private static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd");
     private static int? Pos(long v) => v > 0 ? (int)v : null;
     private static int? Minutes(long seconds) => seconds > 0 ? (int)Math.Round(seconds / 60.0) : null;
+
+    private static bool InWeek(string date, DateOnly start, DateOnly end) =>
+        DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+        && d >= start && d <= end;
 }
