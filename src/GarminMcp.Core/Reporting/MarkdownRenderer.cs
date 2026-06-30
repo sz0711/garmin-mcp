@@ -43,6 +43,7 @@ public static class MarkdownRenderer
         AppendLatestDay(sb, days);
         AppendWeek(sb, report, today);
         AppendWeeklyReview(sb, report, today);
+        AppendTrends(sb, report, today);
         AppendSeasonBests(sb, report.PersonalBests);
         AppendChartImages(sb, charts);
         AppendDetails(sb, report, days);
@@ -240,6 +241,85 @@ public static class MarkdownRenderer
         if (c?.NextQuality is not null) focus.Add($"Schärfe {c.NextQuality.Date}");
         if (focus.Count > 0) sb.AppendLine($"- 🎯 Fokus diese Woche: {string.Join(" · ", focus)}");
         sb.AppendLine();
+    }
+
+    // ---- 4-week trend digest -------------------------------------------------
+    private static void AppendTrends(StringBuilder sb, GarminReport report, DateOnly today)
+    {
+        var rStart = today.AddDays(-6); var rEnd = today;          // last 7 days
+        var pStart = today.AddDays(-27); var pEnd = today.AddDays(-21); // the 7 days ~4 weeks ago
+        var wStart = today.AddDays(-34);                            // 5-week window for sparse point metrics
+
+        var rows = new List<string>();
+
+        void AvgRow(string label, Func<DayMetrics, int?> sel, string unit, bool lowerBetter)
+        {
+            var cur = AvgRange(report.Days, rStart, rEnd, sel);
+            if (cur is null) return;
+            var past = AvgRange(report.Days, pStart, pEnd, sel);
+            rows.Add($"| {label} | {cur.Value.ToString("0", CultureInfo.InvariantCulture)}{unit} | {TrendCell(cur, past, lowerBetter, v => v.ToString("0", CultureInfo.InvariantCulture))} |");
+        }
+
+        AvgRow("❤️ Ruhepuls", d => d.RestingHeartRate, " bpm", lowerBetter: true);
+        AvgRow("💓 HRV", d => d.HrvLastNight, " ms", lowerBetter: false);
+
+        var wCur = AvgRange(report.Days, rStart, rEnd, d => d.WeightKg);
+        if (wCur is double wc)
+        {
+            var wPast = AvgRange(report.Days, pStart, pEnd, d => d.WeightKg);
+            rows.Add($"| ⚖️ Gewicht | {wc.ToString("0.0", CultureInfo.InvariantCulture)} kg | {TrendCell(wCur, wPast, null, v => v.ToString("0.0", CultureInfo.InvariantCulture))} |");
+        }
+
+        var (vF, vL) = FirstLast(report.Days, wStart, today, d => d.Vo2Max);
+        if (vL is double vl)
+            rows.Add($"| 🫁 VO₂max | {vl.ToString("0.0", CultureInfo.InvariantCulture)} | {TrendCell(vL, vF, false, v => v.ToString("0.0", CultureInfo.InvariantCulture))} |");
+
+        var (pmc, _, _, _) = LoadModel.Compute(report.Activities, today, 35);
+        if (pmc.Count >= 2)
+            rows.Add($"| 🏋️ Fitness (CTL) | {pmc[^1].Ctl.ToString("0", CultureInfo.InvariantCulture)} | {TrendCell(pmc[^1].Ctl, pmc[0].Ctl, false, v => v.ToString("0", CultureInfo.InvariantCulture))} |");
+
+        var (mF, mL) = FirstLast(report.Days, wStart, today, d => d.MarathonSeconds is int s ? s : (double?)null);
+        if (mL is double ml)
+            rows.Add($"| ⏱️ Marathon-Prognose | {FormatTime((int)ml)} | {TrendCellTime(mL, mF)} |");
+
+        if (rows.Count < 2) return;
+        sb.AppendLine("## 📈 Trends (4 Wochen)");
+        sb.AppendLine();
+        sb.AppendLine("| Metrik | Aktuell | Δ 4 Wochen |");
+        sb.AppendLine("|---|--:|--:|");
+        foreach (var r in rows) sb.AppendLine(r);
+        sb.AppendLine();
+    }
+
+    private static string TrendCell(double? cur, double? past, bool? lowerBetter, Func<double, string> fmtAbs)
+    {
+        if (cur is null || past is null) return "–";
+        var d = cur.Value - past.Value;
+        if (Math.Abs(d) < 1e-9) return "→ stabil";
+        var arrow = d > 0 ? "▲" : "▼";
+        var s = (d > 0 ? "+" : "−") + fmtAbs(Math.Abs(d));
+        var judge = lowerBetter is bool lb ? (((lb && d < 0) || (!lb && d > 0)) ? " ✅" : " ⚠️") : "";
+        return $"{arrow} {s}{judge}";
+    }
+
+    private static string TrendCellTime(double? cur, double? past)
+    {
+        if (cur is null || past is null) return "–";
+        var d = (int)(cur.Value - past.Value); // seconds; negative = faster = better
+        if (Math.Abs(d) < 1) return "→ stabil";
+        var arrow = d > 0 ? "▲" : "▼";
+        var judge = d < 0 ? " ✅" : " ⚠️";
+        return $"{arrow} {(d > 0 ? "+" : "−")}{FormatTime(Math.Abs(d))}{judge}";
+    }
+
+    private static (double? First, double? Last) FirstLast(
+        IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, double?> sel)
+    {
+        var pts = days
+            .Where(d => DateOnly.TryParse(d.Date, out var dd) && dd >= start && dd <= end)
+            .OrderBy(d => d.Date, StringComparer.Ordinal)
+            .Select(sel).Where(v => v.HasValue).Select(v => v!.Value).ToList();
+        return pts.Count == 0 ? (null, null) : (pts[0], pts[^1]);
     }
 
     // ---- Training pace zones --------------------------------------------------

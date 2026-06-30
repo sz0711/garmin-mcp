@@ -69,6 +69,7 @@ public class DashboardLayoutTests
         Assert.Contains("🏁 Race-Countdown", md);          // race countdown (26 days out)
         Assert.Contains("📅 Wochenrückblick", md);         // last-week review
         Assert.Contains("charts/hero.png", md);           // designed hero summary card
+        Assert.Contains("📈 Trends (4 Wochen)", md);       // 4-week trend digest
 
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);
