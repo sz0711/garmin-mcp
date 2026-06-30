@@ -1,4 +1,5 @@
 using System.Globalization;
+using GarminMcp.Core.Coaching;
 using SkiaSharp;
 
 namespace GarminMcp.Core.Reporting;
@@ -61,6 +62,9 @@ public static class PngCharts
             if (File.Exists(file))
                 refs.Add(new ChartRef($"charts/{id}.png", title, Captions.GetValueOrDefault(id, "")));
         }
+
+        // Designed at-a-glance hero card (rendered at the very top of the dashboard).
+        Add("hero", "", f => DrawHeroCard(f, report, today));
 
         // Form / Performance-Management-Chart
         var (pmc, _, _, _) = LoadModel.Compute(report.Activities, today, 28);
@@ -407,6 +411,96 @@ public static class PngCharts
         using var data = image.Encode(SKEncodedImageFormat.Png, 90);
         using var fs = new FileStream(file, FileMode.Create, FileAccess.Write);
         data.SaveTo(fs);
+    }
+
+    /// <summary>A designed one-glance summary card (no emoji — Linux font safety).</summary>
+    private static void DrawHeroCard(string file, GarminReport report, DateOnly today)
+    {
+        var c = report.Coaching;
+        const int w = 900, h = 300;
+        var ink = new SKColor(0x1C, 0x1C, 0x1E);
+        var sub = new SKColor(0x8A, 0x8A, 0x8E);
+        var accent = (c?.Readiness ?? Readiness.Amber) switch
+        {
+            Readiness.Green => new SKColor(0x30, 0xD1, 0x58),
+            Readiness.Red => new SKColor(0xFF, 0x45, 0x3A),
+            _ => new SKColor(0xFF, 0x9F, 0x0A),
+        };
+
+        using var surface = SKSurface.Create(new SKImageInfo(w, h));
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.White);
+
+        using var title = new SKPaint { Color = sub, TextSize = 22, IsAntialias = true };
+        canvas.DrawText($"HEUTE · {today:dd.MM.yyyy}", 28, 44, title);
+        if (c?.DaysToRace is int dtr && dtr >= 0)
+        {
+            var rt = $"noch {dtr} {(dtr == 1 ? "Tag" : "Tage")} bis zum Ziel";
+            canvas.DrawText(rt, w - 28 - title.MeasureText(rt), 44, title);
+        }
+
+        // Readiness pill (left)
+        const float px = 28, py = 66, pw = 250, ph = 150;
+        using (var bg = new SKPaint { Color = accent.WithAlpha(0x20), IsAntialias = true })
+            canvas.DrawRoundRect(px, py, pw, ph, 18, 18, bg);
+        using (var dot = new SKPaint { Color = accent, IsAntialias = true })
+            canvas.DrawCircle(px + 46, py + 52, 30, dot);
+        using (var st = new SKPaint { Color = SKColors.White, TextSize = 27, IsAntialias = true, FakeBoldText = true, TextAlign = SKTextAlign.Center })
+            canvas.DrawText(c?.ReadinessScore?.ToString() ?? "–", px + 46, py + 62, st);
+        using (var lab = new SKPaint { Color = sub, TextSize = 15, IsAntialias = true })
+            canvas.DrawText("READINESS", px + 90, py + 40, lab);
+        var rec = c is null ? "–" : new string(c.Headline.SkipWhile(ch => !char.IsLetterOrDigit(ch)).ToArray());
+        using (var rp = new SKPaint { Color = ink, TextSize = 21, IsAntialias = true, FakeBoldText = true })
+        {
+            var y = py + 66;
+            foreach (var ln in Wrap(rec, rp, pw - 104).Take(3)) { canvas.DrawText(ln, px + 90, y, rp); y += 25; }
+        }
+
+        // Stat tiles (3 × 2, right)
+        var latest = report.Days.Where(d => d.HasAnyData)
+            .OrderByDescending(d => d.Date, StringComparer.Ordinal).FirstOrDefault();
+        var (cur, _) = TrainingWeek.Summarize(report.Activities, report.Days, today);
+        var tiles = new (string Label, string Value)[]
+        {
+            ("RUHEPULS", latest?.RestingHeartRate is int r ? $"{r}" : "–"),
+            ("HRV", latest?.HrvLastNight is int hv ? $"{hv}" : "–"),
+            ("SCHLAF", latest?.SleepHours is double sh ? $"{sh:0.0}h" : "–"),
+            ("BODY BATT.", latest?.BodyBatteryHigh is int bb ? $"{bb}" : "–"),
+            ("FORM", c?.Tsb is double tsb ? tsb.ToString("+0;-0;0", CultureInfo.InvariantCulture) : "–"),
+            ("KM/WOCHE", cur.Km > 0 ? cur.Km.ToString("0.#", CultureInfo.InvariantCulture) : "–"),
+        };
+        const float gx = 300, gy = 66, gh = 150;
+        var gw = w - 28 - gx;
+        const int cols = 3, rows = 2;
+        var cw = gw / cols; var chh = gh / rows;
+        using var tileLab = new SKPaint { Color = sub, TextSize = 15, IsAntialias = true };
+        using var tileVal = new SKPaint { Color = ink, TextSize = 34, IsAntialias = true, FakeBoldText = true };
+        for (var i = 0; i < tiles.Length; i++)
+        {
+            var col = i % cols; var row = i / cols;
+            var tx = gx + col * cw; var ty = gy + row * chh;
+            canvas.DrawText(tiles[i].Label, tx, ty + 22, tileLab);
+            canvas.DrawText(tiles[i].Value, tx, ty + 58, tileVal);
+        }
+
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        using var fs = new FileStream(file, FileMode.Create, FileAccess.Write);
+        data.SaveTo(fs);
+    }
+
+    private static List<string> Wrap(string text, SKPaint paint, float maxWidth)
+    {
+        var lines = new List<string>();
+        var cur = "";
+        foreach (var word in text.Split(' '))
+        {
+            var t = cur.Length == 0 ? word : cur + " " + word;
+            if (paint.MeasureText(t) <= maxWidth) cur = t;
+            else { if (cur.Length > 0) lines.Add(cur); cur = word; }
+        }
+        if (cur.Length > 0) lines.Add(cur);
+        return lines;
     }
 
     private sealed record StackSeg(string Name, string Color, IReadOnlyList<double?> Values);

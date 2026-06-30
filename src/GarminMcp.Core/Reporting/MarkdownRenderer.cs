@@ -26,6 +26,13 @@ public static class MarkdownRenderer
         sb.AppendLine($"_Aktualisiert: {report.GeneratedAtUtc:yyyy-MM-dd HH:mm} UTC_");
         sb.AppendLine();
 
+        var hero = charts?.FirstOrDefault(c => c.File.EndsWith("hero.png", StringComparison.Ordinal));
+        if (hero is not null)
+        {
+            sb.AppendLine($"![Übersicht]({hero.File})");
+            sb.AppendLine();
+        }
+
         AppendStaleness(sb, report, today);
         AppendKpiBar(sb, report, days, today);
         AppendAlerts(sb, report.Alerts);
@@ -322,10 +329,11 @@ public static class MarkdownRenderer
     // ---- Charts (PNG images; the GitHub mobile app does not render Mermaid) ----------
     private static void AppendChartImages(StringBuilder sb, IReadOnlyList<ChartRef>? charts)
     {
-        if (charts is null || charts.Count == 0) return;
+        var gallery = charts?.Where(c => !c.File.EndsWith("hero.png", StringComparison.Ordinal)).ToList();
+        if (gallery is null || gallery.Count == 0) return;
         sb.AppendLine("## 📈 Entwicklung");
         sb.AppendLine();
-        foreach (var c in charts)
+        foreach (var c in gallery)
         {
             sb.AppendLine($"**{c.Title}**");
             sb.AppendLine();

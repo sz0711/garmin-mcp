@@ -68,6 +68,7 @@ public class DashboardLayoutTests
         Assert.Contains("charts/sleepstages.png", md);    // sleep-stage stacked chart
         Assert.Contains("🏁 Race-Countdown", md);          // race countdown (26 days out)
         Assert.Contains("📅 Wochenrückblick", md);         // last-week review
+        Assert.Contains("charts/hero.png", md);           // designed hero summary card
 
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);

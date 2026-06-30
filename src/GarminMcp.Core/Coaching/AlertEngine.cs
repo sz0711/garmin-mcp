@@ -30,7 +30,8 @@ public sealed class HealthAlert
 public static class AlertEngine
 {
     public static List<HealthAlert> Evaluate(
-        IReadOnlyList<DayMetrics> days, TrainingStatusInfo? status, DateOnly today)
+        IReadOnlyList<DayMetrics> days, TrainingStatusInfo? status, DateOnly today,
+        IReadOnlyList<ActivitySummary>? activities = null)
     {
         var alerts = new List<HealthAlert>();
         var todayKey = today.ToString("yyyy-MM-dd");
@@ -118,6 +119,33 @@ public static class AlertEngine
             else if (debt >= 5 || avg < 6.8)
                 alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "😴", Title = "Schlafdefizit baut sich auf",
                     Detail = $"~{debt:0} h Defizit über {weekSleep.Count} Tage (Ø {avg:0.0} h). Auf konstante, ausreichende Nächte achten." });
+        }
+
+        // --- Training monotony / strain (Foster): same load every day is risky ---
+        if (activities is not null)
+        {
+            var daily = new double[7];
+            foreach (var act in activities)
+            {
+                if (!DateOnly.TryParse(act.Date, out var ad)) continue;
+                var back = today.DayNumber - ad.DayNumber;
+                if (back is >= 0 and <= 6) daily[back] += LoadModel.ActivityLoad(act);
+            }
+            var total = daily.Sum();
+            var trainingDays = daily.Count(x => x > 0);
+            if (trainingDays >= 1)   // activity history is present → this check counts as "run"
+            {
+                checksRun++;
+                if (total >= 150 && trainingDays >= 3)
+                {
+                    var mean = daily.Average();
+                    var sd = Math.Sqrt(daily.Select(x => (x - mean) * (x - mean)).Average());
+                    var monotony = sd > 0.01 ? mean / sd : 3.0; // identical daily load → maximal monotony
+                    if (monotony >= 2.0)
+                        alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "🪨", Title = "Hohe Trainingsmonotonie",
+                            Detail = $"Monotonie {monotony:0.0} (Ziel <2,0): deine Tage ähneln sich zu sehr. Mehr Kontrast – klar harte und klar lockere Tage plus echte Ruhetage – senkt das Übertrainings-/Verletzungsrisiko." });
+                }
+            }
         }
 
         // --- Acute illness / over-reaching pattern (latest day) ---

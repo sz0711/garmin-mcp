@@ -20,7 +20,7 @@ var days = GetIntArg(args, "--days") ?? ToInt(Environment.GetEnvironmentVariable
 var outDir = GetArg(args, "--out") ?? Environment.GetEnvironmentVariable("GARMIN_REPORT_OUT") ?? ".";
 var token = Environment.GetEnvironmentVariable("GARMIN_TOKEN");
 var domain = Environment.GetEnvironmentVariable("GARMIN_DOMAIN") ?? "garmin.com";
-var reportToday = ResolveToday();
+var reportToday = LocalDate.Today();
 
 if (string.IsNullOrWhiteSpace(token))
 {
@@ -92,22 +92,6 @@ catch (Exception ex)
 {
     Console.Error.WriteLine($"[garmin-report] FAILED: {ex.GetType().Name}: {ex.Message}");
     return 1;
-}
-
-// "Today" in the athlete's timezone (the runner is UTC; near midnight that would otherwise
-// roll the day over too early/late). Override with GARMIN_TZ; falls back to UTC if unknown.
-static DateOnly ResolveToday()
-{
-    var tzId = Environment.GetEnvironmentVariable("GARMIN_TZ") ?? "Europe/Berlin";
-    try
-    {
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz).DateTime);
-    }
-    catch
-    {
-        return DateOnly.FromDateTime(DateTime.UtcNow);
-    }
 }
 
 static string? GetArg(string[] args, string name)

@@ -133,6 +133,38 @@ public class CoachingFeaturesTests
     }
 
     [Fact]
+    public void AlertEngine_FlagsHighMonotony()
+    {
+        var days = new List<DayMetrics>();
+        var acts = new List<ActivitySummary>();
+        for (var k = 0; k < 7; k++) // identical load every day → maximal monotony
+        {
+            days.Add(new DayMetrics { Date = Today.AddDays(-k).ToString("yyyy-MM-dd") });
+            acts.Add(new ActivitySummary { Id = k + 1, Date = Today.AddDays(-k).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 8, DurationMin = 45, AverageHr = 145 });
+        }
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.Contains(alerts, a => a.Title.Contains("Trainingsmonotonie"));
+    }
+
+    [Fact]
+    public void AlertEngine_AllClearWithLightActivityWeek()
+    {
+        // A single light run: a check ran (activities present) but nothing is wrong → all-clear, not "too little data".
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = Today.ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 3, DurationMin = 20, AverageHr = 130 },
+        };
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.Single(alerts);
+        Assert.Equal(AlertLevel.Good, alerts[0].Level);
+    }
+
+    [Fact]
     public void AlertEngine_AllClearWhenNormal()
     {
         var days = new List<DayMetrics>();

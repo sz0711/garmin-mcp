@@ -155,8 +155,19 @@ public static class GarminTools
             throw new GarminNotAuthenticatedException(provider.SetupUrl);
         var goal = Environment.GetEnvironmentVariable("GARMIN_GOAL");
         var report = await ReportBuilder.BuildAsync(provider.Service, 14,
-            DateOnly.FromDateTime(DateTime.Today), DateTimeOffset.UtcNow, provider.Metrics, goal, cancellationToken);
+            LocalDate.Today(), DateTimeOffset.UtcNow, provider.Metrics, goal, cancellationToken);
         return (object?)report.Coaching ?? new { message = "No coaching available yet (no recent data)." };
+    }
+
+    [McpServerTool(Name = "garmin_health_alerts")]
+    [Description("Early-warning health/training signals from multi-day trends: elevated resting heart rate, suppressed HRV, training-load spike (ACWR), accumulated sleep debt, training monotony and acute illness pattern. Returns an all-clear when nothing is flagged.")]
+    public static async Task<object> GetHealthAlerts(IGarminConnectionProvider provider, CancellationToken cancellationToken)
+    {
+        if (!provider.IsAuthenticated)
+            throw new GarminNotAuthenticatedException(provider.SetupUrl);
+        var report = await ReportBuilder.BuildAsync(provider.Service, 30,
+            LocalDate.Today(), DateTimeOffset.UtcNow, provider.Metrics, null, cancellationToken);
+        return new { alerts = report.Alerts };
     }
 
     [McpServerTool(Name = "garmin_training_readiness")]
@@ -188,7 +199,7 @@ public static class GarminTools
     {
         if (!provider.IsAuthenticated)
             throw new GarminNotAuthenticatedException(provider.SetupUrl);
-        return TrainingPlanReader.BuildAsync(provider.Service, DateOnly.FromDateTime(DateTime.Today), cancellationToken);
+        return TrainingPlanReader.BuildAsync(provider.Service, LocalDate.Today(), cancellationToken);
     }
 
     private static GarminMetricsClient RequireMetrics(IGarminConnectionProvider provider)

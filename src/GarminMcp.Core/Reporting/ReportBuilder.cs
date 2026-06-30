@@ -169,7 +169,7 @@ public static class ReportBuilder
             report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal, weightKg, report.Activities);
 
             // Early-warning system (multi-day trends across the accumulated history).
-            report.Alerts = AlertEngine.Evaluate(report.Days, status, today);
+            report.Alerts = AlertEngine.Evaluate(report.Days, status, today, report.Activities);
 
             if (report.Coaching is { } coaching)
             {

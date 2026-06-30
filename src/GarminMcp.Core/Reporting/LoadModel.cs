@@ -56,8 +56,8 @@ public static class LoadModel
         return (chart, last.Ctl, last.Atl, last.Tsb);
     }
 
-    /// <summary>TRIMP-style daily load proxy for one activity.</summary>
-    private static double ActivityLoad(ActivitySummary a)
+    /// <summary>TRIMP-style daily load proxy for one activity (duration × HR intensity).</summary>
+    public static double ActivityLoad(ActivitySummary a)
     {
         var duration = a.DurationMin ?? (a.DistanceKm is double km ? km * 6 : 0);
         if (duration <= 0) return 0;
