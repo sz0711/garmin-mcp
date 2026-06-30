@@ -35,7 +35,7 @@ OAuth tokens:
 | `src/GarminMcp.Core` | Auth (OAuth1 signing, ported SSO, token refresh, token bundle) + `GarminService` (read-only) |
 | `src/GarminMcp.Server` | MCP server (stdio + HTTP) and REST, DI, env configuration |
 | `tools/GarminMcp.Login` | One-time tool: login → produces `GARMIN_TOKEN` |
-| `tools/GarminMcp.Report` | Dashboard generator (Markdown + self-contained HTML) |
+| `tools/GarminMcp.Report` | Dashboard generator (phone-friendly Markdown with charts) |
 | `tests/GarminMcp.Tests` | Unit + integration + (optional) live E2E tests |
 
 ---
@@ -197,8 +197,8 @@ Without this variable the live tests are skipped (the suite stays hermetic).
 
 ## Autonomous dashboard (GitHub Actions)
 
-`tools/GarminMcp.Report` generates a phone-friendly dashboard (`dashboard.md` +
-self-contained `index.html` + `data.json`) that **acts as a daily coach**: it reads your
+`tools/GarminMcp.Report` generates a phone-friendly Markdown dashboard (`dashboard.md`
+with coloured Mermaid charts + `data.json`) that **acts as a daily coach**: it reads your
 recovery (HRV/RHR/sleep/Body Battery), Garmin Training Readiness/Status/load and your
 marathon training-plan workouts, then produces a daily recommendation (rest / easy /
 moderate / hard) reconciled with the plan, **plus a daily fuelling target** (calories +

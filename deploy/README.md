@@ -6,7 +6,7 @@ Setup für den vollautomatischen Betrieb:
   `tools/GarminMcp.Report`). Keine Credentials, keine Daten.
 - **Privates Repo `garmin-dashboard`** — Inhalt aus [`deploy/garmin-dashboard/`](garmin-dashboard):
   die GitHub Action (`.github/workflows/sync.yml`) + die generierten Dateien
-  (`dashboard.md`, `index.html`, `data.json`). **Hier liegen die persönlichen Daten.**
+  (`dashboard.md`, `data.json`). **Hier liegen die persönlichen Daten.**
 
 ## Sicherheitsmodell (wo liegen die Credentials?)
 

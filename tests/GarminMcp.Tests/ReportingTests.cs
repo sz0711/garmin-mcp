@@ -128,25 +128,12 @@ public class ReportingTests
     }
 
     [Fact]
-    public void Html_IsSelfContained()
-    {
-        var html = HtmlRenderer.Render(SampleReport());
-        Assert.StartsWith("<!doctype html>", html);
-        Assert.Contains("<svg", html);
-        Assert.Contains("Garmin Dashboard", html);
-        Assert.Contains("48", html);
-        Assert.DoesNotContain("http://", html); // no external resources
-        Assert.DoesNotContain("https://", html);
-    }
-
-    [Fact]
-    public void Renderers_HandleEmptyAndNulls()
+    public void Markdown_HandlesEmptyAndNulls()
     {
         var empty = new GarminReport { GeneratedAtUtc = DateTimeOffset.UnixEpoch, Days = { new DayMetrics { Date = "2026-06-30" } } };
         var md = MarkdownRenderer.Render(empty);
-        var html = HtmlRenderer.Render(empty);
         Assert.Contains("–", md);
-        Assert.Contains("Garmin Dashboard", html);
+        Assert.Contains("Garmin Dashboard", md);
     }
 
     private static GarminReport SampleReport() => new()

@@ -5,7 +5,6 @@ generiertes Dashboard. Eine GitHub Action holt alle 6 Stunden die aktuellen Wert
 den (token-first) Generator aus dem öffentlichen Repo `garmin-mcp` und committet:
 
 - **`dashboard.md`** — Übersicht; in der **GitHub-Handy-App** schön gerendert.
-- **`index.html`** — self-contained HTML; herunterladen und direkt öffnen.
 - **`data.json`** — vollständiger, mitwachsender Datenspeicher (für KI/Coach).
 
 > ⚠️ **Privat halten.** Hier liegen Gesundheitsdaten. Repo niemals öffentlich schalten.
@@ -28,8 +27,7 @@ den (token-first) Generator aus dem öffentlichen Repo `garmin-mcp` und committe
 
 ## Auf dem Handy ansehen
 
-- **GitHub-App** öffnen → dieses Repo → `dashboard.md` (wird gerendert).
-- Oder `index.html` herunterladen und öffnen.
+- **GitHub-App** öffnen → dieses Repo → `dashboard.md` (wird mit Charts gerendert).
 
 ## Token erneuern (~1× pro Jahr)
 

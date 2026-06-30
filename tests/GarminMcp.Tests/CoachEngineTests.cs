@@ -121,8 +121,5 @@ public class CoachEngineTests
         var md = MarkdownRenderer.Render(report);
         Assert.Contains("🧠 Coach", md);
         Assert.Contains("locker laufen", md);
-
-        var html = HtmlRenderer.Render(report);
-        Assert.Contains("locker laufen", html);
     }
 }

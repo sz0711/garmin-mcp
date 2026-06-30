@@ -76,10 +76,9 @@ try
 
     await File.WriteAllTextAsync(dataPath, JsonSerializer.Serialize(merged, jsonOptions));
     await File.WriteAllTextAsync(Path.Combine(outDir, "dashboard.md"), MarkdownRenderer.Render(merged, showDays));
-    await File.WriteAllTextAsync(Path.Combine(outDir, "index.html"), HtmlRenderer.Render(merged, showDays));
 
     var withData = merged.Days.Count(d => d.HasAnyData);
-    Console.Error.WriteLine($"[garmin-report] OK — {merged.Days.Count} day(s) in store ({withData} with data), {merged.Activities.Count} activities. Wrote data.json, dashboard.md, index.html to {Path.GetFullPath(outDir)}");
+    Console.Error.WriteLine($"[garmin-report] OK — {merged.Days.Count} day(s) in store ({withData} with data), {merged.Activities.Count} activities. Wrote data.json, dashboard.md to {Path.GetFullPath(outDir)}");
     return 0;
 }
 catch (GarminServiceException ex)
