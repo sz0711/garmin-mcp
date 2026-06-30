@@ -53,6 +53,8 @@ public class DashboardLayoutTests
         Assert.Contains("Schlaf-Konsistenz", md);
         Assert.Contains("![", md);                        // chart images
         Assert.Contains("charts/", md);                   // image paths
+        Assert.Contains("> ", md);                         // chart explanation blockquote
+        Assert.Contains("Belastbarkeit", md);             // form chart caption text
 
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);

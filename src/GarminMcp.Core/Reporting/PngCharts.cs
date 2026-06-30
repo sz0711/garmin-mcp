@@ -3,8 +3,8 @@ using SkiaSharp;
 
 namespace GarminMcp.Core.Reporting;
 
-/// <summary>A generated chart image to reference from the dashboard.</summary>
-public sealed record ChartRef(string File, string Title);
+/// <summary>A generated chart image to reference from the dashboard, with a short caption explaining it.</summary>
+public sealed record ChartRef(string File, string Title, string Caption = "");
 
 /// <summary>
 /// Renders dashboard charts as PNG images (via SkiaSharp, headless) so they display in
@@ -14,6 +14,26 @@ public sealed record ChartRef(string File, string Title);
 public static class PngCharts
 {
     private const int W = 900, H = 340, PadL = 64, PadR = 24, PadT = 22, PadB = 46;
+
+    /// <summary>Short German explanation per chart (what it says + how to read it).
+    /// Fact-checked from a sports-science perspective.</summary>
+    private static readonly Dictionary<string, string> Captions = new()
+    {
+        ["form"] = "Fitness (CTL, blau) ist deine über 42 Tage aufgebaute Belastbarkeit, Fatigue (ATL, orange) die kurzfristige Ermüdung (7 Tage). Liegt Fatigue länger über Fitness, staut sich Müdigkeit; deutlich darunter bist du erholt und formstark.",
+        ["tsb"] = "Form (TSB) = Fitness (CTL) minus Fatigue (ATL). Über 0: erholt und wettkampfbereit. Unter 0: ermüdet durch Training. Stark negativ heißt Überlastungsrisiko, dauerhaft hoch positiv Formverlust.",
+        ["readiness"] = "Garmins Training Readiness (0–100) bündelt Schlaf, HRV, Erholungszeit und akute Belastung zu einem Bereitschaftswert. Hoch = grünes Licht für Intensität, niedrig = lieber locker oder Ruhetag.",
+        ["rhr"] = "Morgendlicher Ruhepuls: ein tendenziell sinkender Wert spricht für bessere Fitness und Erholung. Ein Anstieg klar über den 7-Tage-Schnitt (hell) deutet auf Stress, beginnende Krankheit oder unvollständige Erholung hin.",
+        ["hrv"] = "Nächtliche Herzfrequenzvariabilität (ms) als Erholungsmaß. Höhere, stabile Werte zeigen gute Erholung. Fällt sie deutlich unter deinen 7-Tage-Schnitt (hell), braucht dein Körper mehr Regeneration.",
+        ["sleep"] = "Schlafdauer pro Nacht. Ziel meist 7–9 Stunden: höhere Balken sind besser. Schlaf ist der stärkste einzelne Hebel für Erholung, HRV und Leistungsfähigkeit.",
+        ["steps"] = "Tägliche Schritte als Maß für Alltagsaktivität neben dem Training. Hohe Werte an Ruhetagen zeigen versteckte Belastung, sehr niedrige deuten auf zu wenig Bewegung.",
+        ["bodybattery"] = "Body Battery (Tageshoch, 0–100): Garmins Energiespeicher aus HRV, Stress und Aktivität. Hohe Peaks = gut erholt; niedrige Höchstwerte deuten auf unzureichende Regeneration hin.",
+        ["stress"] = "Durchschnittlicher Stresslevel (0–100), aus der HRV über den Tag. Niedrig heißt entspanntes Nervensystem; dauerhaft hohe Werte bremsen deine Erholung.",
+        ["vo2max"] = "Geschätzte VO₂max (maximale Sauerstoffaufnahme) – dein wichtigster Ausdauer-Fitnessmarker. Sie steigt langsam mit konsequentem Training; ein Aufwärtstrend zeigt wachsende aerobe Leistungsfähigkeit, ein Abfall mögliche Ermüdung oder Formverlust.",
+        ["acwr"] = "Verhältnis akuter (7 Tage) zu chronischer (28 Tage) Belastung. Der grüne Bereich 0,8–1,3 ist optimal; weit darüber (>1,5) steigt das Verletzungsrisiko, darunter verlierst du Form.",
+        ["bedtime"] = "Zubettgeh-Uhrzeit über die Zeit. Konstante Zeiten (flache Linie) stabilisieren deinen Rhythmus und verbessern Erholung sowie HRV; stark schwankende Zeiten stören den Schlaf.",
+        ["weeklykm"] = "Wöchentliche Laufkilometer als Balken. Achte auf gleichmäßigen Aufbau (Faustregel: max. ca. 10 % mehr pro Woche) mit regelmäßigen Entlastungswochen. Zu steile Sprünge erhöhen das Verletzungsrisiko.",
+        ["typesplit"] = "Wochenkilometer aufgeteilt nach Sportart. Zeigt, wie ausgewogen dein Training auf Laufen, Rad und Co. verteilt ist – ein hoher Laufanteil bedeutet viel Laufumfang im Verhältnis zu anderen Sportarten.",
+    };
 
     public static List<ChartRef> Generate(GarminReport report, DateOnly today, string outDir)
     {
@@ -35,7 +55,7 @@ public static class PngCharts
             var file = Path.Combine(dir, id + ".png");
             draw(file);
             if (File.Exists(file))
-                refs.Add(new ChartRef($"charts/{id}.png", title));
+                refs.Add(new ChartRef($"charts/{id}.png", title, Captions.GetValueOrDefault(id, "")));
         }
 
         // Form / Performance-Management-Chart
@@ -124,7 +144,9 @@ public static class PngCharts
         if (zeroLine) { min = Math.Min(min, 0); max = Math.Max(max, 0); }
         if (max <= min) { max = min + 1; }
         var padRange = (max - min) * 0.08;
-        min -= padRange; max += padRange;
+        max += padRange;
+        // Bars grow from the zero baseline — never pad below it (avoids nonsensical negative axis labels).
+        if (!zeroBaseline) min -= padRange;
 
         var n = labels.Count;
         double plotW = W - PadL - PadR, plotH = H - PadT - PadB;
@@ -165,13 +187,25 @@ public static class PngCharts
             canvas.DrawLine(PadL, y0, W - PadR, y0, zp);
         }
 
-        // x labels (first / mid / last)
+        // x labels — evenly spaced, as many as fit without overlapping (bars: centred on the bar)
         if (n > 0)
         {
-            foreach (var i in new[] { 0, n / 2, n - 1 }.Distinct())
+            var isBar = series.Any(s => s.Bar);
+            var slot = plotW / Math.Max(1, n);
+            float LabelX(int i) => isBar ? (float)(PadL + i * slot + slot / 2) : (float)X(i);
+
+            var maxLabels = Math.Max(2, (int)(plotW / 120)); // ~120px per label keeps them readable
+            var step = (int)Math.Ceiling((double)n / maxLabels);
+            var idx = new List<int>();
+            for (var i = 0; i < n; i += step) idx.Add(i);
+            if (idx.Count == 0 || idx[^1] != n - 1) idx.Add(n - 1);
+
+            foreach (var i in idx.Distinct())
             {
                 var lbl = labels[i];
-                canvas.DrawText(lbl, (float)X(i) - text.MeasureText(lbl) / 2, H - 16, text);
+                var cx = LabelX(i) - text.MeasureText(lbl) / 2;
+                cx = Math.Clamp(cx, PadL, W - PadR - text.MeasureText(lbl)); // stay inside the plot
+                canvas.DrawText(lbl, cx, H - 16, text);
             }
         }
 

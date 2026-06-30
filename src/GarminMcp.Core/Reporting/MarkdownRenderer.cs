@@ -131,6 +131,11 @@ public static class MarkdownRenderer
             sb.AppendLine();
             sb.AppendLine($"![{c.Title}]({c.File})");
             sb.AppendLine();
+            if (!string.IsNullOrWhiteSpace(c.Caption))
+            {
+                sb.AppendLine($"> {c.Caption}");
+                sb.AppendLine();
+            }
         }
     }
 
