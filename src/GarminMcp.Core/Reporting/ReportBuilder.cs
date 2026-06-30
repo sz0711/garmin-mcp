@@ -59,9 +59,17 @@ public static class ReportBuilder
             try
             {
                 var sleep = await service.GetSleepAsync(key, cancellationToken);
-                var seconds = sleep.DailySleepDto?.SleepTimeSeconds ?? 0;
+                var dto = sleep.DailySleepDto;
+                var seconds = dto?.SleepTimeSeconds ?? 0;
                 if (seconds > 0)
                     m.SleepHours = Math.Round(seconds / 3600.0, 1);
+                if (dto is not null)
+                {
+                    m.SleepDeepMin = Minutes(dto.DeepSleepSeconds);
+                    m.SleepLightMin = Minutes(dto.LightSleepSeconds);
+                    m.SleepRemMin = Minutes(dto.RemSleepSeconds);
+                    m.SleepAwakeMin = Minutes(dto.AwakeSleepSeconds);
+                }
             }
             catch
             {
@@ -88,6 +96,7 @@ public static class ReportBuilder
                 Type = a.ActivityType?.TypeKey,
                 DistanceKm = a.Distance > 0 ? Math.Round(a.Distance / 1000.0, 2) : null,
                 DurationMin = a.Duration > 0 ? Math.Round(a.Duration / 60.0, 1) : null,
+                ElevationGainM = a.ElevationGain > 0 ? Math.Round(a.ElevationGain, 0) : null,
                 Calories = Pos((long)Math.Round(a.Calories)),
                 AverageHr = Pos((long)Math.Round(a.AverageHr)),
             }).ToList();
@@ -118,6 +127,7 @@ public static class ReportBuilder
                 todayDay.Vo2Max ??= status?.Vo2Max;
                 todayDay.Acwr ??= status?.Acwr;
                 todayDay.MarathonSeconds ??= race?.MarathonSeconds;
+                todayDay.ReadinessScore ??= readiness?.Score;
             }
 
             double? weightKg = null;
@@ -150,4 +160,5 @@ public static class ReportBuilder
 
     private static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd");
     private static int? Pos(long v) => v > 0 ? (int)v : null;
+    private static int? Minutes(long seconds) => seconds > 0 ? (int)Math.Round(seconds / 60.0) : null;
 }

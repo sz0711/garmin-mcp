@@ -17,10 +17,16 @@ public sealed class DayMetrics
     public int? Calories { get; set; }
     public int IntensityMinutes { get; set; }
 
+    public int? SleepDeepMin { get; set; }
+    public int? SleepLightMin { get; set; }
+    public int? SleepRemMin { get; set; }
+    public int? SleepAwakeMin { get; set; }
+
     // Accumulated single-point-per-day metrics (only fetched for "today" each run; preserved on merge).
     public double? Vo2Max { get; set; }
     public double? Acwr { get; set; }
     public int? MarathonSeconds { get; set; }
+    public int? ReadinessScore { get; set; }
 
     public bool HasAnyData =>
         RestingHeartRate is not null || HrvLastNight is not null || SleepHours is not null ||
@@ -36,6 +42,7 @@ public sealed class ActivitySummary
     public string? Type { get; set; }
     public double? DistanceKm { get; set; }
     public double? DurationMin { get; set; }
+    public double? ElevationGainM { get; set; }
     public int? Calories { get; set; }
     public int? AverageHr { get; set; }
 }
@@ -63,6 +70,7 @@ public sealed class GarminReport
                 d.Vo2Max ??= prev.Vo2Max;
                 d.Acwr ??= prev.Acwr;
                 d.MarathonSeconds ??= prev.MarathonSeconds;
+                d.ReadinessScore ??= prev.ReadinessScore;
             }
             days[d.Date] = d;
         }
