@@ -57,4 +57,7 @@ public interface IGarminService
 
     /// <summary>Calendar for the week containing the given date (incl. scheduled plan workouts).</summary>
     Task<GarminCalendarWeek> GetCalendarWeekAsync(string date, CancellationToken cancellationToken = default);
+
+    /// <summary>Full structure of a workout (segments/steps/targets) by its id.</summary>
+    Task<GarminWorkout> GetWorkoutAsync(long workoutId, CancellationToken cancellationToken = default);
 }

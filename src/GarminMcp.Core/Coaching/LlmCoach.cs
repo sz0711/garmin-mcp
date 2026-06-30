@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using GarminMcp.Core.Reporting;
 
 namespace GarminMcp.Core.Coaching;
 
@@ -29,7 +31,8 @@ public sealed class LlmCoach
         _model = string.IsNullOrWhiteSpace(model) ? DefaultModel : model!;
     }
 
-    public async Task<string?> GenerateInsightAsync(DailyCoaching coaching, CancellationToken cancellationToken = default)
+    public async Task<string?> GenerateInsightAsync(
+        DailyCoaching coaching, IReadOnlyList<DayMetrics>? recentDays = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -37,11 +40,11 @@ public sealed class LlmCoach
             {
                 model = _model,
                 temperature = 0.5,
-                max_tokens = 350,
+                max_tokens = 450,
                 messages = new object[]
                 {
                     new { role = "system", content = SystemPrompt },
-                    new { role = "user", content = BuildUserPrompt(coaching) },
+                    new { role = "user", content = BuildUserPrompt(coaching, recentDays) },
                 },
             };
 
@@ -72,33 +75,65 @@ public sealed class LlmCoach
     }
 
     private const string SystemPrompt =
-        "Du bist ein erfahrener, motivierender Lauf-/Marathon-Coach. Du bekommst die strukturierten " +
-        "Tagesdaten eines Läufers (Erholung, Trainingslast, Trainingsplan-Einheit, Renn-Prognose). " +
-        "Schreibe eine knappe, persönliche Tagesempfehlung auf Deutsch in 2–4 Sätzen: was heute zu tun ist " +
-        "(Ruhetag/locker/moderat/hart), warum (der wichtigste Treiber), und ein kurzer Ausblick auf die " +
-        "nächste Schlüsseleinheit. Respektiere die Empfehlung der Regel-Engine (widersprich der Ruhetag-/" +
-        "Intensitäts-Vorgabe nicht), formuliere sie nur konkret und motivierend aus. Kein Markdown, keine " +
-        "Aufzählung, keine Überschrift — nur Fließtext.";
+        "Du bist ein erfahrener, datengetriebener Marathon-Coach (Methodik: HRV-gesteuertes Training nach " +
+        "Plews/Buchheit, Acute:Chronic-Workload, polarisiertes Training, sauberer Taper). Du erhältst die " +
+        "strukturierten Tagesdaten eines Läufers. Schreibe eine prägnante, persönliche Tagesempfehlung auf " +
+        "Deutsch (3–6 Sätze, Fließtext, KEIN Markdown, KEINE Aufzählung, KEINE Überschrift):\n" +
+        "1) Was heute konkret zu tun ist. Halte dich STRIKT an die vorgegebene 'Empfohlene Einheit' " +
+        "(Ruhetag/locker/moderat/hart) — schwäche sie nicht ab und mache aus einem Ruhe-/Erholungstag nichts " +
+        "Härteres. Ist eine strukturierte Einheit geplant und die Readiness lässt sie zu, nenne die konkreten " +
+        "Eckdaten (Distanz/Dauer, Pace/HR aus der Struktur), ggf. mit Anpassung.\n" +
+        "2) Der wichtigste Grund (EIN Treiber: HRV-Trend, Ruhepuls, Schlaf, Body Battery oder Trainingslast).\n" +
+        "3) Kurzer Ausblick auf die nächste Schlüsseleinheit/den Longrun, sodass heute darauf hinarbeitet.\n" +
+        "Sei motivierend und konkret, aber ehrlich bei Warnsignalen (Krankheitsmuster → Ruhe).";
 
-    private static string BuildUserPrompt(DailyCoaching c)
+    private static string BuildUserPrompt(DailyCoaching c, IReadOnlyList<DayMetrics>? recentDays)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Datum: {c.Date}");
-        sb.AppendLine($"Readiness: {c.Readiness}{(c.ReadinessScore is int s ? $" (Garmin {s}{(c.ReadinessLevel is null ? "" : "/" + c.ReadinessLevel)})" : "")}");
-        sb.AppendLine($"Empfehlung der Regel-Engine: {c.Recommended} — {c.Headline}");
-        if (c.Rationale.Count > 0) sb.AppendLine($"Begründung: {string.Join("; ", c.Rationale)}");
+        sb.AppendLine($"Readiness-Bewertung: {c.Readiness}{(c.ReadinessScore is int s ? $"; Garmin Training Readiness {s}{(c.ReadinessLevel is null ? "" : "/" + c.ReadinessLevel)}" : "")}");
+        sb.AppendLine($"Empfohlene Einheit (Leitplanke, NICHT abschwächen): {c.Recommended} — {c.Headline}");
         if (c.Flags.Count > 0) sb.AppendLine($"Erholungs-Flags: {string.Join("; ", c.Flags)}");
-        if (c.PlanToday.Count > 0) sb.AppendLine($"Plan heute: {string.Join(", ", c.PlanToday.Select(p => p.Title ?? p.Type.ToString()))}");
-        if (c.PlanNote is not null) sb.AppendLine($"Plan-Hinweis: {c.PlanNote}");
-        if (c.NextLongRun is not null) sb.AppendLine($"Nächster Longrun: {c.NextLongRun.Date} ({c.NextLongRun.Title ?? c.NextLongRun.Type.ToString()})");
-        if (c.NextQuality is not null) sb.AppendLine($"Nächste harte Einheit: {c.NextQuality.Date} ({c.NextQuality.Title ?? c.NextQuality.Type.ToString()})");
+        if (c.Rationale.Count > 0) sb.AppendLine($"Kontext: {string.Join("; ", c.Rationale)}");
+
+        if (recentDays is not null)
+        {
+            var rows = recentDays
+                .OrderByDescending(d => d.Date, StringComparer.Ordinal)
+                .Take(7)
+                .Select(d => $"  {d.Date}: HRV {N(d.HrvLastNight)}, RuheHR {N(d.RestingHeartRate)}, Schlaf {N(d.SleepHours)}h, BodyBattery {N(d.BodyBatteryHigh)}, Schritte {N(d.Steps)}")
+                .ToList();
+            if (rows.Count > 0)
+            {
+                sb.AppendLine("Letzte Tage:");
+                foreach (var r in rows) sb.AppendLine(r);
+            }
+        }
+
         if (c.TrainingStatus is not null) sb.AppendLine($"Trainingsstatus: {c.TrainingStatus}");
-        if (c.Acwr is double a) sb.AppendLine($"ACWR (Last-Verhältnis): {a:0.0}");
+        if (c.Acwr is double a) sb.AppendLine($"ACWR (Last-Verhältnis, Ziel 0.8–1.3): {a:0.0}");
         if (c.Vo2Max is double v) sb.AppendLine($"VO2max: {v:0.0}");
+
+        if (c.PlanToday.Count > 0)
+        {
+            sb.AppendLine("Geplante Einheit(en) heute:");
+            foreach (var p in c.PlanToday) sb.AppendLine($"  - {p.Detail ?? p.Title ?? p.Type.ToString()}");
+        }
+        else
+        {
+            sb.AppendLine("Heute keine Einheit im Plan.");
+        }
+        if (c.PlanNote is not null) sb.AppendLine($"Plan-Abgleich (Regel-Engine): {c.PlanNote}");
+        if (c.NextLongRun is not null) sb.AppendLine($"Nächster Longrun: {c.NextLongRun.Date} — {c.NextLongRun.Detail ?? c.NextLongRun.Title ?? "Long Run"}");
+        if (c.NextQuality is not null) sb.AppendLine($"Nächste harte Einheit: {c.NextQuality.Date} — {c.NextQuality.Detail ?? c.NextQuality.Title ?? "Quality"}");
+
         if (c.RaceDate is not null) sb.AppendLine($"Rennen: {c.RaceDate}{(c.DaysToRace is int d ? $" (in {d} Tagen)" : "")}");
         if (c.Race?.MarathonSeconds is int ms) sb.AppendLine($"Marathon-Prognose: {ms / 3600}:{(ms % 3600) / 60:00}:{ms % 60:00}");
-        if (!string.IsNullOrWhiteSpace(c.Goal)) sb.AppendLine($"Ziel: {c.Goal}");
+        if (!string.IsNullOrWhiteSpace(c.Goal)) sb.AppendLine($"Zielzeit: {c.Goal}");
         if (c.TaperNote is not null) sb.AppendLine($"Taper-Kontext: {c.TaperNote}");
         return sb.ToString();
     }
+
+    private static string N(int? x) => x?.ToString() ?? "–";
+    private static string N(double? x) => x?.ToString("0.#", CultureInfo.InvariantCulture) ?? "–";
 }

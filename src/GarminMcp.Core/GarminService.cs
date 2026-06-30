@@ -114,6 +114,9 @@ public sealed class GarminService : IGarminService
     public Task<GarminCalendarWeek> GetCalendarWeekAsync(string date, CancellationToken cancellationToken = default) =>
         Guard(() => Client.GetCalendarByWeek(DateOnly.FromDateTime(ParseDate(date, nameof(date))), cancellationToken), "calendar week");
 
+    public Task<GarminWorkout> GetWorkoutAsync(long workoutId, CancellationToken cancellationToken = default) =>
+        Guard(() => Client.GetWorkout(workoutId, cancellationToken), "workout");
+
     private static DateTime ParseDate(string date, string paramName)
     {
         if (DateTime.TryParseExact(date, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))

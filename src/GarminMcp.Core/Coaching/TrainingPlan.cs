@@ -24,6 +24,9 @@ public sealed class PlannedWorkout
     public double? DistanceKm { get; set; }
     public long? WorkoutId { get; set; }
     public bool IsRace { get; set; }
+
+    /// <summary>Human-readable workout structure (resolved on demand for key sessions).</summary>
+    public string? Detail { get; set; }
 }
 
 /// <summary>What the plan calls for around today, plus the goal race.</summary>
@@ -89,6 +92,22 @@ public static class TrainingPlanReader
             view.RaceDate = race.Date.ToString("yyyy-MM-dd");
             view.RaceTitle = race.Title;
             view.DaysToRace = race.Date >= today ? race.Date.DayNumber - today.DayNumber : null;
+        }
+
+        // Resolve the detailed structure for the key sessions only (a few extra calls).
+        foreach (var pw in new[] { view.Today.FirstOrDefault(), view.NextLongRun, view.NextQuality }
+                     .Where(p => p?.WorkoutId is not null)
+                     .Distinct())
+        {
+            try
+            {
+                var workout = await service.GetWorkoutAsync(pw!.WorkoutId!.Value, cancellationToken);
+                pw.Detail = WorkoutFormatter.Summarize(workout);
+            }
+            catch
+            {
+                // workout detail is optional
+            }
         }
 
         return view;
