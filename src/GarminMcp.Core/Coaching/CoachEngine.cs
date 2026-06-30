@@ -34,6 +34,7 @@ public sealed class DailyCoaching
     public int? DaysToRace { get; set; }
     public string? Goal { get; set; }
     public string? TaperNote { get; set; }
+    public NutritionPlan? Nutrition { get; set; }
 }
 
 /// <summary>
@@ -51,7 +52,8 @@ public static class CoachEngine
         TrainingStatusInfo? status,
         TrainingPlanView plan,
         RacePrediction? race,
-        string? goal = null)
+        string? goal = null,
+        double? weightKg = null)
     {
         var todayKey = today.ToString("yyyy-MM-dd");
         var todayM = days.FirstOrDefault(d => d.Date == todayKey);
@@ -169,6 +171,7 @@ public static class CoachEngine
             DaysToRace = plan.DaysToRace,
             Goal = goal,
             TaperNote = taperNote,
+            Nutrition = NutritionEngine.Compute(recommended, weightKg, todayM?.Calories),
         };
     }
 

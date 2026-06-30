@@ -135,6 +135,13 @@ public static class MarkdownRenderer
         }
 
         if (c.TaperNote is not null) sb.AppendLine($"- ⏳ {c.TaperNote}");
+
+        if (c.Nutrition is { } n)
+        {
+            sb.AppendLine($"- 🍽️ Ernährung heute ({n.DayType}): ~{n.CalorieTarget} kcal — KH {n.CarbsG} g · Eiweiß {n.ProteinG} g · Fett {n.FatG} g{(n.WeightKg is double w ? $" (bei {w} kg)" : "")}");
+            sb.AppendLine($"  - {n.Guidance}");
+        }
+
         sb.AppendLine();
     }
 

@@ -201,7 +201,9 @@ Without this variable the live tests are skipped (the suite stays hermetic).
 self-contained `index.html` + `data.json`) that **acts as a daily coach**: it reads your
 recovery (HRV/RHR/sleep/Body Battery), Garmin Training Readiness/Status/load and your
 marathon training-plan workouts, then produces a daily recommendation (rest / easy /
-moderate / hard) reconciled with the plan. A natural-language insight is written by
+moderate / hard) reconciled with the plan, **plus a daily fuelling target** (calories +
+carb/protein/fat split scaled to the day's load and your body weight) with concrete food
+ideas. A natural-language insight is written by
 **GitHub Models** (the workflow's built-in `GITHUB_TOKEN` with `models: read` — no
 separate API key), with a deterministic rule-based fallback. It runs on a schedule via
 GitHub Actions so a private repo holds your data and updates itself. Optional repo

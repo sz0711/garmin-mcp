@@ -150,6 +150,11 @@ public static class HtmlRenderer
             sb.Append($"<li>🏁 Marathon-Prognose {MarkdownRenderer.FormatTime(ms2)}</li>");
         }
         if (c.TaperNote is not null) sb.Append($"<li>⏳ {WebUtility.HtmlEncode(c.TaperNote)}</li>");
+        if (c.Nutrition is { } n)
+        {
+            var w = n.WeightKg is double kg ? $" (bei {kg} kg)" : "";
+            sb.Append($"<li>🍽️ <b>Ernährung heute</b> ({WebUtility.HtmlEncode(n.DayType)}): ~{n.CalorieTarget} kcal — KH {n.CarbsG} g · Eiweiß {n.ProteinG} g · Fett {n.FatG} g{w}<br><span style=\"color:#555;\">{WebUtility.HtmlEncode(n.Guidance)}</span></li>");
+        }
         sb.Append("</ul></div>");
     }
 

@@ -111,8 +111,25 @@ public static class ReportBuilder
             if (metrics is not null && !string.IsNullOrWhiteSpace(displayName))
                 race = await metrics.GetRacePredictionsAsync(displayName!, cancellationToken);
 
+            double? weightKg = null;
+            try
+            {
+                var weight = await service.GetWeightAsync(Iso(start), Iso(today), cancellationToken);
+                var latest = weight.DailyWeightSummaries?
+                    .Where(s => s.LatestWeight is not null && s.LatestWeight.Weight > 0)
+                    .OrderByDescending(s => s.SummaryDate.ToString("yyyy-MM-dd"), StringComparer.Ordinal)
+                    .FirstOrDefault();
+                var grams = latest?.LatestWeight?.Weight ?? (weight.TotalAverage?.Weight ?? 0);
+                if (grams > 0)
+                    weightKg = Math.Round(grams > 500 ? grams / 1000.0 : grams, 1);
+            }
+            catch
+            {
+                // weight unavailable — nutrition falls back to calorie-based macros
+            }
+
             var plan = await TrainingPlanReader.BuildAsync(service, today, cancellationToken);
-            report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal);
+            report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal, weightKg);
         }
         catch
         {

@@ -99,6 +99,15 @@ public class CoachEngineTests
     }
 
     [Fact]
+    public void Evaluate_PopulatesNutrition_WithWeight()
+    {
+        var c = CoachEngine.Evaluate(Today, Days(70, 50, 7.5, 90), null, null, Plan(SessionType.Long), null, goal: null, weightKg: 72);
+        Assert.NotNull(c.Nutrition);
+        Assert.Equal(72, c.Nutrition!.WeightKg);
+        Assert.True(c.Nutrition.CarbsG > c.Nutrition.ProteinG);
+    }
+
+    [Fact]
     public void Renderers_IncludeCoachingBlock()
     {
         var report = new GarminReport

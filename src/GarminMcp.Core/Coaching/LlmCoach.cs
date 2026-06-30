@@ -78,13 +78,17 @@ public sealed class LlmCoach
         "Du bist ein erfahrener, datengetriebener Marathon-Coach (Methodik: HRV-gesteuertes Training nach " +
         "Plews/Buchheit, Acute:Chronic-Workload, polarisiertes Training, sauberer Taper). Du erhältst die " +
         "strukturierten Tagesdaten eines Läufers. Schreibe eine prägnante, persönliche Tagesempfehlung auf " +
-        "Deutsch (3–6 Sätze, Fließtext, KEIN Markdown, KEINE Aufzählung, KEINE Überschrift):\n" +
+        "Deutsch (4–8 Sätze, Fließtext, KEIN Markdown, KEINE Aufzählung, KEINE Überschrift):\n" +
         "1) Was heute konkret zu tun ist. Halte dich STRIKT an die vorgegebene 'Empfohlene Einheit' " +
         "(Ruhetag/locker/moderat/hart) — schwäche sie nicht ab und mache aus einem Ruhe-/Erholungstag nichts " +
         "Härteres. Ist eine strukturierte Einheit geplant und die Readiness lässt sie zu, nenne die konkreten " +
         "Eckdaten (Distanz/Dauer, Pace/HR aus der Struktur), ggf. mit Anpassung.\n" +
         "2) Der wichtigste Grund (EIN Treiber: HRV-Trend, Ruhepuls, Schlaf, Body Battery oder Trainingslast).\n" +
         "3) Kurzer Ausblick auf die nächste Schlüsseleinheit/den Longrun, sodass heute darauf hinarbeitet.\n" +
+        "4) Eine konkrete Ernährungsempfehlung für heute: nenne 2–3 passende Lebensmittel/Mahlzeiten, die zu den " +
+        "vorgegebenen Makro-Zielen (Kalorien, KH/Eiweiß/Fett) und zur Tagesbelastung passen, inkl. Timing um die " +
+        "Einheit (z. B. Carbs davor/danach, Eiweiß zur Regeneration). Nenne die Makro-Zielwerte nicht stur erneut, " +
+        "sondern setze sie in praktische Mahlzeiten um.\n" +
         "Sei motivierend und konkret, aber ehrlich bei Warnsignalen (Krankheitsmuster → Ruhe).";
 
     private static string BuildUserPrompt(DailyCoaching c, IReadOnlyList<DayMetrics>? recentDays)
@@ -131,6 +135,8 @@ public sealed class LlmCoach
         if (c.Race?.MarathonSeconds is int ms) sb.AppendLine($"Marathon-Prognose: {ms / 3600}:{(ms % 3600) / 60:00}:{ms % 60:00}");
         if (!string.IsNullOrWhiteSpace(c.Goal)) sb.AppendLine($"Zielzeit: {c.Goal}");
         if (c.TaperNote is not null) sb.AppendLine($"Taper-Kontext: {c.TaperNote}");
+        if (c.Nutrition is { } n)
+            sb.AppendLine($"Makro-Ziel heute ({n.DayType}): ~{n.CalorieTarget} kcal — Kohlenhydrate {n.CarbsG} g, Eiweiß {n.ProteinG} g, Fett {n.FatG} g{(n.WeightKg is double w ? $" (Gewicht {w} kg)" : "")}.");
         return sb.ToString();
     }
 
