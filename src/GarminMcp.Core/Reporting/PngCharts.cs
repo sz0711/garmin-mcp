@@ -194,11 +194,10 @@ public static class PngCharts
             var slot = plotW / Math.Max(1, n);
             float LabelX(int i) => isBar ? (float)(PadL + i * slot + slot / 2) : (float)X(i);
 
-            var maxLabels = Math.Max(2, (int)(plotW / 120)); // ~120px per label keeps them readable
-            var step = (int)Math.Ceiling((double)n / maxLabels);
+            // Evenly distribute k labels across [0, n-1] (first & last always shown, equal spacing).
+            var k = Math.Max(2, Math.Min(n, (int)Math.Round(plotW / 130.0))); // ~130px per label
             var idx = new List<int>();
-            for (var i = 0; i < n; i += step) idx.Add(i);
-            if (idx.Count == 0 || idx[^1] != n - 1) idx.Add(n - 1);
+            for (var j = 0; j < k; j++) idx.Add((int)Math.Round((double)j * (n - 1) / (k - 1)));
 
             foreach (var i in idx.Distinct())
             {
