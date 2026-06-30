@@ -17,7 +17,6 @@ public static class HtmlRenderer
             .OrderByDescending(d => d.Date, StringComparer.Ordinal)
             .Take(showDays)
             .ToList();
-        var chrono = days.AsEnumerable().Reverse().ToList();
         var latest = days.FirstOrDefault(d => d.HasAnyData);
 
         var sb = new StringBuilder();
@@ -36,7 +35,10 @@ public static class HtmlRenderer
               h2{font-size:1.05rem;margin:1.5rem 0 .5rem;}
               table{border-collapse:collapse;width:100%;font-size:.85rem;} th,td{padding:.35rem .4rem;border-bottom:1px solid var(--line);text-align:right;}
               th:first-child,td:first-child{text-align:left;}
-              .spark{display:flex;align-items:center;gap:.6rem;margin:.4rem 0;} .spark .lbl{width:6rem;color:var(--muted);font-size:.8rem;}
+              .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(17rem,1fr));gap:1rem;margin:1rem 0;}
+              .chart-card{background:var(--card);border-radius:.6rem;padding:.6rem .7rem;}
+              .chart-title{font-size:.85rem;color:var(--muted);margin-bottom:.25rem;}
+              .chart-card svg{display:block;width:100%;height:auto;}
               ul{padding-left:1.1rem;} li{margin:.25rem 0;}
             </style></head><body>
             """);
@@ -60,10 +62,7 @@ public static class HtmlRenderer
             sb.Append("</div>");
         }
 
-        sb.Append($"<h2>Trends (letzte {chrono.Count} Tage)</h2>");
-        SparkRow(sb, "Ruhepuls", chrono.Select(d => (double?)d.RestingHeartRate), "#ff453a");
-        SparkRow(sb, "HRV", chrono.Select(d => (double?)d.HrvLastNight), "#0a84ff");
-        SparkRow(sb, "Schlaf", chrono.Select(d => d.SleepHours), "#30d158");
+        AppendCharts(sb, report);
 
         sb.Append("<h2>Verlauf</h2><table><thead><tr><th>Datum</th><th>Ruhe-HR</th><th>HRV</th><th>Schlaf</th><th>Schritte</th><th>Stress</th><th>Body Bat.</th><th>kcal</th></tr></thead><tbody>");
         foreach (var d in days)
@@ -170,27 +169,49 @@ public static class HtmlRenderer
     private static string C(int? v) => v?.ToString() ?? "–";
     private static string C(double? v) => v?.ToString(CultureInfo.InvariantCulture) ?? "–";
 
-    private static void SparkRow(StringBuilder sb, string label, IEnumerable<double?> values, string color)
+    private static void AppendCharts(StringBuilder sb, GarminReport report)
     {
-        sb.Append($"<div class=\"spark\"><span class=\"lbl\">{label}</span>{Svg(values.ToList(), color)}</div>");
+        var days = report.Days.OrderBy(d => d.Date, StringComparer.Ordinal).ToList();
+        if (days.Count > 28) days = days.Skip(days.Count - 28).ToList();
+        var labels = days.Select(d => d.Date).ToList();
+
+        sb.Append("<h2>Entwicklung</h2><div class=\"charts\">");
+        ChartCard(sb, "❤️ Ruhepuls (bpm)", SvgCharts.Line(labels, days.Select(d => (double?)d.RestingHeartRate).ToList(), "#ff453a", Avg(days, d => d.RestingHeartRate)));
+        ChartCard(sb, "💓 HRV (ms)", SvgCharts.Line(labels, days.Select(d => (double?)d.HrvLastNight).ToList(), "#0a84ff"));
+        ChartCard(sb, "😴 Schlaf (h)", SvgCharts.Bars(labels, days.Select(d => d.SleepHours).ToList(), "#30d158"));
+        ChartCard(sb, "👟 Schritte", SvgCharts.Bars(labels, days.Select(d => (double?)d.Steps).ToList(), "#5e5ce6"));
+
+        var (weekLabels, weekValues) = WeeklyKm(report.Activities);
+        if (weekValues.Any(v => v.HasValue))
+            ChartCard(sb, "🏃 Wochenkilometer (km)", SvgCharts.Bars(weekLabels, weekValues, "#ff9f0a"));
+
+        sb.Append("</div>");
     }
 
-    private static string Svg(IReadOnlyList<double?> values, string color)
+    private static void ChartCard(StringBuilder sb, string title, string svg) =>
+        sb.Append($"<div class=\"chart-card\"><div class=\"chart-title\">{title}</div>{svg}</div>");
+
+    private static double? Avg(IReadOnlyList<DayMetrics> days, Func<DayMetrics, int?> selector)
     {
-        const int w = 280, h = 44, pad = 4;
-        var present = values.Select((v, i) => (i, v)).Where(t => t.v.HasValue).Select(t => (t.i, val: t.v!.Value)).ToList();
-        if (present.Count == 0)
-            return $"<svg width=\"{w}\" height=\"{h}\"></svg>";
+        var v = days.Select(selector).Where(x => x.HasValue).Select(x => (double)x!.Value).ToList();
+        return v.Count > 0 ? v.Average() : null;
+    }
 
-        double min = present.Min(p => p.val), max = present.Max(p => p.val);
-        double n = Math.Max(1, values.Count - 1);
-        string X(int i) => (pad + i / n * (w - 2 * pad)).ToString("0.#", CultureInfo.InvariantCulture);
-        string Y(double v) => (max > min
-            ? pad + (1 - (v - min) / (max - min)) * (h - 2 * pad)
-            : h / 2.0).ToString("0.#", CultureInfo.InvariantCulture);
-
-        var pts = string.Join(" ", present.Select(p => $"{X(p.i)},{Y(p.val)}"));
-        var dots = string.Concat(present.Select(p => $"<circle cx=\"{X(p.i)}\" cy=\"{Y(p.val)}\" r=\"1.6\" fill=\"{color}\"/>"));
-        return $"<svg width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\"><polyline fill=\"none\" stroke=\"{color}\" stroke-width=\"1.8\" points=\"{pts}\"/>{dots}</svg>";
+    private static (List<string> Labels, List<double?> Values) WeeklyKm(IReadOnlyList<ActivitySummary> activities)
+    {
+        var byWeek = new Dictionary<int, double>();
+        foreach (var a in activities)
+        {
+            if (a.DistanceKm is not double km || km <= 0) continue;
+            if (!DateOnly.TryParseExact(a.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) continue;
+            var dt = d.ToDateTime(TimeOnly.MinValue);
+            var key = ISOWeek.GetYear(dt) * 100 + ISOWeek.GetWeekOfYear(dt);
+            byWeek[key] = byWeek.GetValueOrDefault(key) + km;
+        }
+        var ordered = byWeek.OrderBy(kv => kv.Key).ToList();
+        if (ordered.Count > 10) ordered = ordered.Skip(ordered.Count - 10).ToList();
+        return (
+            ordered.Select(kv => "KW" + (kv.Key % 100).ToString("00")).ToList(),
+            ordered.Select(kv => (double?)Math.Round(kv.Value, 1)).ToList());
     }
 }

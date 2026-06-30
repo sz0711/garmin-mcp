@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using GarminMcp.Core.Coaching;
 
@@ -44,6 +45,8 @@ public static class MarkdownRenderer
         sb.AppendLine($"- HRV `{Sparkline.Render(chrono.Select(d => (double?)d.HrvLastNight))}` {Range(chrono.Select(d => (double?)d.HrvLastNight), "")}");
         sb.AppendLine($"- Schlaf `{Sparkline.Render(chrono.Select(d => d.SleepHours))}` {Range(chrono.Select(d => d.SleepHours), "h")}");
         sb.AppendLine();
+
+        AppendMermaidCharts(sb, report);
 
         sb.AppendLine("## Verlauf");
         sb.AppendLine();
@@ -143,6 +146,39 @@ public static class MarkdownRenderer
         }
 
         sb.AppendLine();
+    }
+
+    private static void AppendMermaidCharts(StringBuilder sb, GarminReport report)
+    {
+        var days = report.Days.OrderBy(d => d.Date, StringComparer.Ordinal).ToList();
+        if (days.Count > 14) days = days.Skip(days.Count - 14).ToList();
+
+        var charts = new StringBuilder();
+        void Chart(string title, string axis, Func<DayMetrics, double?> selector)
+        {
+            var pts = days
+                .Where(d => selector(d).HasValue)
+                .Select(d => (label: d.Date.Length >= 10 ? d.Date[5..] : d.Date, val: selector(d)!.Value))
+                .ToList();
+            if (pts.Count < 2) return;
+            charts.AppendLine("```mermaid");
+            charts.AppendLine("xychart-beta");
+            charts.AppendLine($"  title \"{title}\"");
+            charts.AppendLine("  x-axis [" + string.Join(", ", pts.Select(p => $"\"{p.label}\"")) + "]");
+            charts.AppendLine($"  y-axis \"{axis}\"");
+            charts.AppendLine("  line [" + string.Join(", ", pts.Select(p => p.val.ToString("0.#", CultureInfo.InvariantCulture))) + "]");
+            charts.AppendLine("```");
+            charts.AppendLine();
+        }
+
+        Chart("Ruhepuls (bpm)", "bpm", d => (double?)d.RestingHeartRate);
+        Chart("HRV (ms)", "ms", d => (double?)d.HrvLastNight);
+        Chart("Schlaf (h)", "h", d => d.SleepHours);
+
+        if (charts.Length == 0) return;
+        sb.AppendLine("## Charts");
+        sb.AppendLine();
+        sb.Append(charts);
     }
 
     private static string DescribePlan(PlannedWorkout p) =>
