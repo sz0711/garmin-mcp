@@ -1,0 +1,49 @@
+name: Garmin dashboard
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours (UTC)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: garmin-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout data repo (this private repo)
+        uses: actions/checkout@v4
+
+      - name: Checkout source (public garmin-mcp)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/garmin-mcp
+          path: .src
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Generate dashboard
+        env:
+          GARMIN_TOKEN: ${{ secrets.GARMIN_TOKEN }}
+        run: dotnet run --project .src/tools/GarminMcp.Report -c Release -- --days 30 --out .
+
+      - name: Commit & push if changed
+        run: |
+          rm -rf .src
+          git config user.name "garmin-bot"
+          git config user.email "garmin-bot@users.noreply.github.com"
+          git add data.json dashboard.md index.html
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update Garmin dashboard ($(date -u '+%Y-%m-%dT%H:%MZ'))"
+            git push
+          fi

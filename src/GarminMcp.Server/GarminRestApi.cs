@@ -1,0 +1,33 @@
+using GarminMcp.Core;
+
+namespace GarminMcp.Server;
+
+/// <summary>
+/// Plain REST surface, mirroring the MCP tools. Only mapped in HTTP transport mode.
+/// Read-only; dates are ISO <c>yyyy-MM-dd</c> query parameters.
+/// </summary>
+public static class GarminRestApi
+{
+    public static void Map(WebApplication app)
+    {
+        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+        var api = app.MapGroup("/api/garmin");
+
+        api.MapGet("/profile", (IGarminService g, CancellationToken ct) => g.GetProfileAsync(ct));
+        api.MapGet("/user-settings", (IGarminService g, CancellationToken ct) => g.GetUserSettingsAsync(ct));
+        api.MapGet("/daily-summary", (IGarminService g, string date, CancellationToken ct) => g.GetDailySummaryAsync(date, ct));
+        api.MapGet("/steps", (IGarminService g, string date, CancellationToken ct) => g.GetStepsAsync(date, ct));
+        api.MapGet("/heart-rate", (IGarminService g, string date, CancellationToken ct) => g.GetHeartRateAsync(date, ct));
+        api.MapGet("/sleep", (IGarminService g, string date, CancellationToken ct) => g.GetSleepAsync(date, ct));
+        api.MapGet("/body-battery", (IGarminService g, string startDate, string? endDate, CancellationToken ct) => g.GetBodyBatteryAsync(startDate, endDate, ct));
+        api.MapGet("/hrv", (IGarminService g, string startDate, string? endDate, CancellationToken ct) => g.GetHrvAsync(startDate, endDate, ct));
+        api.MapGet("/body-composition", (IGarminService g, string startDate, string? endDate, CancellationToken ct) => g.GetBodyCompositionAsync(startDate, endDate, ct));
+        api.MapGet("/weight", (IGarminService g, string startDate, string? endDate, CancellationToken ct) => g.GetWeightAsync(startDate, endDate, ct));
+        api.MapGet("/hydration", (IGarminService g, string date, CancellationToken ct) => g.GetHydrationAsync(date, ct));
+        api.MapGet("/activities", (IGarminService g, int? start, int? limit, CancellationToken ct) => g.GetActivitiesAsync(start ?? 0, limit ?? 20, ct));
+        api.MapGet("/activities-by-date", (IGarminService g, string startDate, string endDate, string? activityType, CancellationToken ct) => g.GetActivitiesByDateAsync(startDate, endDate, activityType, ct));
+        api.MapGet("/activities/{activityId:long}", (IGarminService g, long activityId, CancellationToken ct) => g.GetActivityDetailsAsync(activityId, ct));
+        api.MapGet("/personal-records", (IGarminService g, CancellationToken ct) => g.GetPersonalRecordsAsync(ct));
+    }
+}

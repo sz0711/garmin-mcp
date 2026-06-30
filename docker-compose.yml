@@ -1,0 +1,25 @@
+# Optional: run the Garmin MCP server in HTTP (Streamable HTTP + REST) mode as a
+# long-running service. For the Claude Desktop stdio integration you do NOT need
+# compose — see README (claude_desktop_config.json with `docker run -i`).
+services:
+  garmin-mcp:
+    build: .
+    image: garmin-mcp:latest
+    environment:
+      MCP_TRANSPORT: http
+      ASPNETCORE_URLS: http://+:8080
+      # Provide ONE of: a token (recommended) or email+password.
+      GARMIN_TOKEN: ${GARMIN_TOKEN:-}
+      GARMIN_EMAIL: ${GARMIN_EMAIL:-}
+      GARMIN_PASSWORD: ${GARMIN_PASSWORD:-}
+      GARMIN_DOMAIN: ${GARMIN_DOMAIN:-garmin.com}
+      # Optional token persistence across restarts (mounted volume below).
+      GARMIN_TOKEN_FILE: /data/garmin-token.json
+    ports:
+      - "8080:8080"
+    volumes:
+      - garmin-tokens:/data
+    restart: unless-stopped
+
+volumes:
+  garmin-tokens:

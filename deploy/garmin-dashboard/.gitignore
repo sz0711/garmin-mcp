@@ -1,0 +1,9 @@
+# Source checked out during the workflow run
+.src/
+**/bin/
+**/obj/
+
+# Never commit raw credentials
+*.token
+garmin-token.json
+.env

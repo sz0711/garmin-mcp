@@ -1,0 +1,19 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+.idea/
+
+## Secrets / tokens — never commit these
+garmin-token.json
+*.garmintoken
+.env
+.env.local
+
+## Local agent / editor config
+.claude/
+
+## OS
+Thumbs.db
+.DS_Store
