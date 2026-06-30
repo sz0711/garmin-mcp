@@ -198,17 +198,36 @@ Without this variable the live tests are skipped (the suite stays hermetic).
 ## Autonomous dashboard (GitHub Actions)
 
 `tools/GarminMcp.Report` generates a phone-friendly Markdown dashboard (`dashboard.md`
-with PNG trend charts in `charts/` + `data.json`) that **acts as a daily coach**: it reads your
-recovery (HRV/RHR/sleep/Body Battery), Garmin Training Readiness/Status/load and your
-marathon training-plan workouts, then produces a daily recommendation (rest / easy /
-moderate / hard) reconciled with the plan, **plus a daily fuelling target** (calories +
-carb/protein/fat split scaled to the day's load and your body weight) with concrete food
-ideas. A natural-language insight is written by
-**GitHub Models** (the workflow's built-in `GITHUB_TOKEN` with `models: read` — no
-separate API key), with a deterministic rule-based fallback. It runs on a schedule via
-GitHub Actions so a private repo holds your data and updates itself. Optional repo
-variable `GARMIN_GOAL` (e.g. "sub 4:00") makes coaching goal-aware. See
-[`deploy/`](deploy/) for the workflow and setup.
+with PNG charts in `charts/` + `data.json`) that **acts as a personal coach** and updates
+itself on a schedule via GitHub Actions, so a private repo holds your data. The store
+accumulates history across runs (a transient empty API response never erases stored days),
+and "today" is resolved in your timezone (`GARMIN_TZ`, default `Europe/Berlin`).
+
+The dashboard renders, top to bottom:
+
+- **Hero card** — a designed at-a-glance image: readiness (green/amber/red), today's
+  recommendation, and resting HR / HRV / sleep / Body Battery / Form / weekly km.
+- **Early-warning system** — multi-day-trend alerts (elevated resting HR, suppressed HRV,
+  training-load spike via ACWR, accumulated sleep debt, Foster training monotony, illness
+  pattern), or an honest all-clear / "too little history" state.
+- **Daily coach** — readiness-anchored recommendation (rest/easy/moderate/hard) reconciled
+  with the marathon-plan workout; **recognises training already done today**; with a
+  **daily fuelling target** (calories + carb/protein/fat scaled to load & body weight) and
+  a natural-language note from **GitHub Models** (built-in `GITHUB_TOKEN`, `models: read` —
+  no separate key), falling back to deterministic rule-based text.
+- **Race countdown** (from 28 days out, taper phase + goal verdict), **today's structured
+  workout** (steps + target pace), and **training pace zones** derived from race predictions.
+- **Weekly overview & review** (this week vs last week, WHO intensity-minutes goal, plan
+  adherence, plus a Monday LLM weekly recap/outlook), **4-week trend digest** (VO₂max, RHR,
+  HRV, fitness, weight, marathon prediction with deltas), **week ahead**, **personal bests**,
+  and a gallery of trend charts (Form/CTL-ATL, readiness, RHR, HRV, sleep & sleep stages,
+  steps, Body Battery, stress, VO₂max, weight, ACWR, bedtime, weekly km, sport split, plus a
+  GitHub-style training-load calendar heatmap) — each with a short explanation.
+
+Optional repo variable `GARMIN_GOAL` (e.g. `sub 4:00`) makes coaching goal-aware. If a
+scheduled run fails, the workflow opens a GitHub issue. The same coaching is also exposed
+over MCP/REST (`garmin_daily_coaching`, `garmin_health_alerts`, …). See [`deploy/`](deploy/)
+for the workflow and setup.
 
 ## Troubleshooting
 

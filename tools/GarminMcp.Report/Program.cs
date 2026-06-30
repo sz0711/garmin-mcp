@@ -50,6 +50,13 @@ try
     var fresh = await ReportBuilder.BuildAsync(
         service, days, reportToday, DateTimeOffset.UtcNow, metrics, goal);
 
+    GarminReport? existing = null;
+    if (File.Exists(dataPath))
+    {
+        try { existing = JsonSerializer.Deserialize<GarminReport>(await File.ReadAllTextAsync(dataPath), jsonOptions); }
+        catch (Exception ex) { Console.Error.WriteLine($"[garmin-report] Ignoring unreadable {dataPath}: {ex.Message}"); }
+    }
+
     // Optional LLM coach note via GitHub Models (uses the Actions GITHUB_TOKEN; falls back to rules text).
     var ghToken = Environment.GetEnvironmentVariable("GITHUB_MODELS_TOKEN")
                   ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
@@ -63,13 +70,24 @@ try
         Console.Error.WriteLine(fresh.CoachInsight is null
             ? "[garmin-report] LLM insight unavailable; using rule-based text."
             : "[garmin-report] LLM insight generated.");
-    }
 
-    GarminReport? existing = null;
-    if (File.Exists(dataPath))
-    {
-        try { existing = JsonSerializer.Deserialize<GarminReport>(await File.ReadAllTextAsync(dataPath), jsonOptions); }
-        catch (Exception ex) { Console.Error.WriteLine($"[garmin-report] Ignoring unreadable {dataPath}: {ex.Message}"); }
+        // Weekly review: refresh once per ISO week. Stamped with this week's Monday so the first
+        // successful run of the week generates it (Monday normally, Tuesday if Monday failed) and
+        // it isn't regenerated again that week — no stale insight stuck for days, no daily re-spend.
+        var weekStart = reportToday.AddDays(-(((int)reportToday.DayOfWeek + 6) % 7)).ToString("yyyy-MM-dd");
+        if (existing?.WeeklyInsightWeekStart != weekStart)
+        {
+            var (_, prevWeek) = TrainingWeek.Summarize(fresh.Activities, fresh.Days, reportToday);
+            var weekly = await coach.GenerateWeeklyReviewAsync(fresh.Coaching, prevWeek, fresh.Days);
+            if (weekly is not null)
+            {
+                fresh.WeeklyInsight = weekly;
+                fresh.WeeklyInsightWeekStart = weekStart;
+            }
+            Console.Error.WriteLine(weekly is null
+                ? "[garmin-report] Weekly review unavailable (will retry next run)."
+                : "[garmin-report] Weekly review generated.");
+        }
     }
 
     var merged = GarminReport.Merge(existing, fresh);

@@ -240,7 +240,7 @@ public static class MarkdownRenderer
     {
         var c = report.Coaching;
         var (_, prev) = TrainingWeek.Summarize(report.Activities, report.Days, today);
-        if (prev.Sessions == 0 && (c?.PlannedLastWeek ?? 0) == 0) return;
+        if (prev.Sessions == 0 && (c?.PlannedLastWeek ?? 0) == 0 && string.IsNullOrWhiteSpace(report.WeeklyInsight)) return;
 
         var offset = ((int)today.DayOfWeek + 6) % 7;
         var curStart = today.AddDays(-offset);
@@ -251,6 +251,11 @@ public static class MarkdownRenderer
 
         sb.AppendLine("## 📅 Wochenrückblick (letzte Woche)");
         sb.AppendLine();
+        if (!string.IsNullOrWhiteSpace(report.WeeklyInsight))
+        {
+            sb.AppendLine(report.WeeklyInsight!.Trim());
+            sb.AppendLine();
+        }
         sb.AppendLine($"- 🏃 {prev.Km:0.#} km in {prev.Sessions} Einheiten (längster {prev.LongestKm:0.#} km) · ⚡ {prev.IntensityMinutes} Intensitätsmin");
         if (c?.PlannedLastWeek is int pl && pl > 0)
         {

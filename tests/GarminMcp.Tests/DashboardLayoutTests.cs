@@ -71,6 +71,7 @@ public class DashboardLayoutTests
         Assert.Contains("charts/hero.png", md);           // designed hero summary card
         Assert.Contains("📈 Trends (4 Wochen)", md);       // 4-week trend digest
         Assert.Contains("📆 Woche voraus", md);            // upcoming planned sessions
+        Assert.Contains("Solide Woche", md);              // weekly LLM review narrative
 
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);
@@ -145,6 +146,7 @@ public class DashboardLayoutTests
             GeneratedAtUtc = DateTimeOffset.UnixEpoch,
             Coaching = coaching,
             CoachInsight = "Heute eine kontrollierte Tempo-Einheit – deine Erholung trägt das.",
+            WeeklyInsight = "Solide Woche: Umfang gehalten und Erholung stabil. Diese Woche Fokus auf die Tempo-Einheit.",
             Alerts = AlertEngine.Evaluate(days, status, new DateOnly(2026, 6, 30)),
             PersonalBests = new()
             {

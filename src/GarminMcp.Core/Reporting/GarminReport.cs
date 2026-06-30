@@ -65,6 +65,8 @@ public sealed class GarminReport
     public DateTimeOffset GeneratedAtUtc { get; set; }
     public DailyCoaching? Coaching { get; set; }
     public string? CoachInsight { get; set; }   // optional LLM-written daily note
+    public string? WeeklyInsight { get; set; }  // optional LLM-written weekly review (refreshed weekly)
+    public string? WeeklyInsightWeekStart { get; set; } // ISO Monday the weekly insight belongs to
     public List<HealthAlert> Alerts { get; set; } = new();        // early-warning signals
     public List<PersonalBest> PersonalBests { get; set; } = new();
     public List<DayMetrics> Days { get; set; } = new();
@@ -120,6 +122,8 @@ public sealed class GarminReport
             GeneratedAtUtc = fresh.GeneratedAtUtc,
             Coaching = fresh.Coaching,
             CoachInsight = fresh.CoachInsight,
+            WeeklyInsight = fresh.WeeklyInsight ?? existing?.WeeklyInsight, // refreshed weekly, kept in between
+            WeeklyInsightWeekStart = fresh.WeeklyInsight is not null ? fresh.WeeklyInsightWeekStart : existing?.WeeklyInsightWeekStart,
             Alerts = fresh.Alerts,                 // recomputed each run
             PersonalBests = fresh.PersonalBests.Count > 0 ? fresh.PersonalBests : (existing?.PersonalBests ?? new()),
             Days = days.Values.OrderByDescending(d => d.Date, StringComparer.Ordinal).ToList(),

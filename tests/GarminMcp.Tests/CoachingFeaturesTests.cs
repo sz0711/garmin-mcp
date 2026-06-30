@@ -107,6 +107,25 @@ public class CoachingFeaturesTests
     }
 
     [Fact]
+    public void Merge_KeepsWeeklyInsightUntilRefreshed()
+    {
+        var existing = new GarminReport { WeeklyInsight = "alte Woche", WeeklyInsightWeekStart = "2026-06-22" };
+
+        // Run with no fresh weekly insight → keep the existing one (and its week stamp) in between.
+        var merged = GarminReport.Merge(existing, new GarminReport { GeneratedAtUtc = DateTimeOffset.UnixEpoch });
+        Assert.Equal("alte Woche", merged.WeeklyInsight);
+        Assert.Equal("2026-06-22", merged.WeeklyInsightWeekStart);
+
+        // Run that produces a fresh one for the new week → it wins, stamp updates.
+        var merged2 = GarminReport.Merge(existing, new GarminReport
+        {
+            GeneratedAtUtc = DateTimeOffset.UnixEpoch, WeeklyInsight = "neue Woche", WeeklyInsightWeekStart = "2026-06-29",
+        });
+        Assert.Equal("neue Woche", merged2.WeeklyInsight);
+        Assert.Equal("2026-06-29", merged2.WeeklyInsightWeekStart);
+    }
+
+    [Fact]
     public void Renderer_WarnsOnStaleData()
     {
         var report = new GarminReport

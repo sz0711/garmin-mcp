@@ -75,6 +75,77 @@ public sealed class LlmCoach
         }
     }
 
+    /// <summary>
+    /// Writes a short German weekly review + outlook (recap of the last completed week and the
+    /// focus for the coming one). Generated once per week (Mondays). Returns null on any failure.
+    /// </summary>
+    public async Task<string?> GenerateWeeklyReviewAsync(
+        DailyCoaching coaching, WeeklyStats lastWeek, IReadOnlyList<DayMetrics>? recentDays = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var payload = new
+            {
+                model = _model,
+                temperature = 0.5,
+                max_tokens = 400,
+                messages = new object[]
+                {
+                    new { role = "system", content = WeeklySystemPrompt },
+                    new { role = "user", content = BuildWeeklyPrompt(coaching, lastWeek, recentDays) },
+                },
+            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, _endpoint)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            request.Headers.UserAgent.ParseAdd("garmin-mcp-coach/1.0");
+            request.Headers.Accept.ParseAdd("application/json");
+
+            using var response = await _http.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(cancellationToken));
+            var content = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+            return string.IsNullOrWhiteSpace(content) ? null : content!.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private const string WeeklySystemPrompt =
+        "Du bist ein erfahrener, datengetriebener Marathon-Coach. Schreibe einen kompakten, persönlichen " +
+        "Wochen-Rückblick auf Deutsch (4–6 Sätze, Fließtext, KEIN Markdown, KEINE Aufzählung):\n" +
+        "1) Würdige die letzte Woche ehrlich (Umfang, Planerfüllung, Schlüsseleinheiten, Erholungstrend).\n" +
+        "2) Benenne EINE konkrete Sache, die gut lief, und EINE, an der du diese Woche arbeiten würdest.\n" +
+        "3) Gib einen klaren Fokus/Ausblick für die kommende Woche, abgestimmt auf Form, Erholung und Zielrennen.\n" +
+        "Sei motivierend, konkret und ehrlich; übertreibe nicht und beschönige Warnsignale nicht.";
+
+    private static string BuildWeeklyPrompt(DailyCoaching c, WeeklyStats w, IReadOnlyList<DayMetrics>? recentDays)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Stichtag (Wochenstart): {c.Date}");
+        sb.AppendLine($"Letzte Woche: {w.Km:0.#} km, {w.Sessions} Einheiten, längster Lauf {w.LongestKm:0.#} km, {w.Hours:0.#} h, {w.IntensityMinutes} Intensitätsminuten.");
+        if (c.PlannedLastWeek is int pl && pl > 0)
+            sb.AppendLine($"Planerfüllung letzte Woche: {c.DoneLastWeek ?? 0}/{pl} Einheiten{(c.PlannedKmLastWeek is double pk && pk > 0 ? $", {c.DoneKmLastWeek ?? 0:0.#}/{pk:0.#} km" : "")}.");
+        if (recentDays is not null)
+        {
+            var rows = recentDays.OrderByDescending(d => d.Date, StringComparer.Ordinal).Take(7)
+                .Select(d => $"  {d.Date}: RuheHR {N(d.RestingHeartRate)}, HRV {N(d.HrvLastNight)}, Schlaf {N(d.SleepHours)}h").ToList();
+            if (rows.Count > 0) { sb.AppendLine("Erholung (letzte Tage):"); foreach (var r in rows) sb.AppendLine(r); }
+        }
+        if (c.Ctl is double ctl && c.Atl is double atl && c.Tsb is double tsb)
+            sb.AppendLine($"Form: Fitness/CTL {ctl:0}, Fatigue/ATL {atl:0}, Form/TSB {tsb:+0;-0;0}.");
+        if (c.PlannedThisWeek is int pt && pt > 0) sb.AppendLine($"Diese Woche geplant: {pt} Einheiten.");
+        if (c.NextLongRun is not null) sb.AppendLine($"Nächster Longrun: {c.NextLongRun.Date} ({c.NextLongRun.Title ?? "Long Run"}).");
+        if (c.NextQuality is not null) sb.AppendLine($"Nächste harte Einheit: {c.NextQuality.Date} ({c.NextQuality.Title ?? "Quality"}).");
+        if (c.RaceDate is not null) sb.AppendLine($"Zielrennen: {c.RaceDate}{(c.DaysToRace is int d ? $" (in {d} Tagen)" : "")}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $", Ziel {c.Goal}")}.");
+        return sb.ToString();
+    }
+
     private const string SystemPrompt =
         "Du bist ein erfahrener, datengetriebener Marathon-Coach (Methodik: HRV-gesteuertes Training nach " +
         "Plews/Buchheit, Acute:Chronic-Workload, polarisiertes Training, sauberer Taper). Du erhältst die " +
