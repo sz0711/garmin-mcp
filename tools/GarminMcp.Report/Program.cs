@@ -1,9 +1,14 @@
+using System.Globalization;
 using System.Text.Json;
 using GarminMcp.Core;
 using GarminMcp.Core.Auth;
 using GarminMcp.Core.Coaching;
 using GarminMcp.Core.Metrics;
 using GarminMcp.Core.Reporting;
+
+// Render the German dashboard with German number formatting (comma decimals), matching the
+// LLM prose. data.json stays culture-invariant (System.Text.Json) so parsing is unaffected.
+CultureInfo.CurrentCulture = CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("de-DE");
 
 // =====================================================================
 // garmin-report — token-first dashboard generator (for GitHub Actions).

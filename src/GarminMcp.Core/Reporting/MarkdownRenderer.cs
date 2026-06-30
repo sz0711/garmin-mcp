@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using GarminMcp.Core.Coaching;
 
@@ -275,12 +274,8 @@ public static class MarkdownRenderer
             sb.AppendLine($"- {string.Join(" · ", parts)} _(vs. Vorwoche)_");
         }
 
-        var focus = new List<string>();
-        if (c?.PlannedThisWeek is int pt && pt > 0) focus.Add($"{pt} geplante Einheiten");
-        if (c?.NextLongRun is not null) focus.Add($"Longrun {c.NextLongRun.Date}");
-        if (c?.NextQuality is not null) focus.Add($"Schärfe {c.NextQuality.Date}");
-        if (focus.Count > 0) sb.AppendLine($"- 🎯 Fokus diese Woche: {string.Join(" · ", focus)}");
         sb.AppendLine();
+        // (The forward-looking "Fokus diese Woche" lived here but belongs to "📆 Woche voraus".)
     }
 
     // ---- 4-week trend digest -------------------------------------------------
@@ -297,7 +292,7 @@ public static class MarkdownRenderer
             var cur = AvgRange(report.Days, rStart, rEnd, sel);
             if (cur is null) return;
             var past = AvgRange(report.Days, pStart, pEnd, sel);
-            rows.Add($"| {label} | {cur.Value.ToString("0", CultureInfo.InvariantCulture)}{unit} | {TrendCell(cur, past, lowerBetter, v => v.ToString("0", CultureInfo.InvariantCulture))} |");
+            rows.Add($"| {label} | {cur.Value.ToString("0")}{unit} | {TrendCell(cur, past, lowerBetter, v => v.ToString("0"))} |");
         }
 
         AvgRow("❤️ Ruhepuls", d => d.RestingHeartRate, " bpm", lowerBetter: true);
@@ -308,16 +303,16 @@ public static class MarkdownRenderer
         if (wCur is double wc)
         {
             var wPast = AvgRange(report.Days, pStart, pEnd, d => d.WeightKg);
-            rows.Add($"| ⚖️ Gewicht | {wc.ToString("0.0", CultureInfo.InvariantCulture)} kg | {TrendCell(wCur, wPast, null, v => v.ToString("0.0", CultureInfo.InvariantCulture))} |");
+            rows.Add($"| ⚖️ Gewicht | {wc.ToString("0.0")} kg | {TrendCell(wCur, wPast, null, v => v.ToString("0.0"))} |");
         }
 
         var (vF, vL) = FirstLast(report.Days, wStart, today, d => d.Vo2Max);
         if (vL is double vl)
-            rows.Add($"| 🫁 VO₂max | {vl.ToString("0.0", CultureInfo.InvariantCulture)} | {TrendCell(vL, vF, false, v => v.ToString("0.0", CultureInfo.InvariantCulture))} |");
+            rows.Add($"| 🫁 VO₂max | {vl.ToString("0.0")} | {TrendCell(vL, vF, false, v => v.ToString("0.0"))} |");
 
         var (pmc, _, _, _) = LoadModel.Compute(report.Activities, today, 35);
         if (pmc.Count >= 2)
-            rows.Add($"| 🏋️ Fitness (CTL) | {pmc[^1].Ctl.ToString("0", CultureInfo.InvariantCulture)} | {TrendCell(pmc[^1].Ctl, pmc[0].Ctl, false, v => v.ToString("0", CultureInfo.InvariantCulture))} |");
+            rows.Add($"| 🏋️ Fitness (CTL) | {pmc[^1].Ctl.ToString("0")} | {TrendCell(pmc[^1].Ctl, pmc[0].Ctl, false, v => v.ToString("0"))} |");
 
         var (mF, mL) = FirstLast(report.Days, wStart, today, d => d.MarathonSeconds is int s ? s : (double?)null);
         if (mL is double ml)
@@ -396,7 +391,7 @@ public static class MarkdownRenderer
         var latest = days.FirstOrDefault(d => d.HasAnyData);
         if (latest is null) return;
 
-        sb.AppendLine($"## Letzter Tag — {latest.Date}");
+        sb.AppendLine($"## 📍 Letzter Tag — {latest.Date}");
         sb.AppendLine();
         sb.AppendLine($"- ❤️ Ruhepuls: {Val(latest.RestingHeartRate, "bpm")}");
         sb.AppendLine($"- 💓 HRV (letzte Nacht): {Val(latest.HrvLastNight, "ms")}{(latest.HrvStatus is null ? "" : $" ({latest.HrvStatus})")}");
@@ -441,7 +436,7 @@ public static class MarkdownRenderer
         {
             var split = string.Join(" · ", cur.KmByType
                 .OrderByDescending(kv => kv.Value)
-                .Select(kv => $"{kv.Key} {kv.Value:0.#} km"));
+                .Select(kv => $"{SportDe(kv.Key)} {kv.Value:0.#} km"));
             sb.AppendLine($"Aufteilung: {split}");
             sb.AppendLine();
         }
@@ -506,7 +501,7 @@ public static class MarkdownRenderer
             if (a.Calories is not null) parts.Add($"{a.Calories} kcal");
             if (a.AverageHr is not null) parts.Add($"ø {a.AverageHr} bpm");
             var detail = parts.Count > 0 ? " — " + string.Join(", ", parts) : "";
-            sb.AppendLine($"- **{a.Date}** {a.Name ?? a.Type ?? "Aktivität"} _({a.Type ?? "?"})_{detail}");
+            sb.AppendLine($"- **{a.Date}** {a.Name ?? SportDe(a.Type)} _({SportDe(a.Type)})_{detail}");
         }
         sb.AppendLine();
         sb.AppendLine("</details>");
@@ -667,6 +662,32 @@ public static class MarkdownRenderer
         >= -20 => "ermüdet",
         _ => "stark ermüdet",
     };
+
+    /// <summary>German label for a Garmin sport-type key (e.g. running → Laufen).</summary>
+    internal static string SportDe(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return "Sonstiges";
+        return type.ToLowerInvariant() switch
+        {
+            "running" => "Laufen",
+            "treadmill_running" => "Laufband",
+            "trail_running" => "Trail-Lauf",
+            "track_running" => "Bahn-Lauf",
+            "indoor_running" => "Laufen (drinnen)",
+            "walking" => "Gehen",
+            "hiking" => "Wandern",
+            "cycling" or "road_biking" => "Radfahren",
+            "indoor_cycling" or "virtual_ride" => "Radfahren (drinnen)",
+            "mountain_biking" => "Mountainbike",
+            "swimming" or "lap_swimming" or "open_water_swimming" => "Schwimmen",
+            "strength_training" => "Krafttraining",
+            "cardio" or "indoor_cardio" => "Cardio",
+            "yoga" => "Yoga",
+            "pilates" => "Pilates",
+            "other" or "andere" => "Sonstiges",
+            _ => char.ToUpperInvariant(type[0]) + type[1..].Replace('_', ' '),
+        };
+    }
 
     private static string Short(string isoDate) => isoDate.Length >= 10 ? isoDate[5..] : isoDate;
     private static string Val(int? v, string unit) => v is null ? "–" : $"{v}{(unit.Length > 0 ? " " + unit : "")}";

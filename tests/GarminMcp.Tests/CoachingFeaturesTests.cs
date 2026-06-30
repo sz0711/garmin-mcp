@@ -57,6 +57,23 @@ public class CoachingFeaturesTests
     }
 
     [Fact]
+    public void Coach_RunDoesNotCoverPlannedStrengthSession()
+    {
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30", RestingHeartRate = 50, HrvLastNight = 66, SleepHours = 7.6, BodyBatteryHigh = 82 } };
+        var plan = new TrainingPlanView { Today = { new PlannedWorkout { Date = "2026-06-30", Type = SessionType.Strength, Title = "Strength Builder 1" } } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-30", Type = "running", Name = "Base", DistanceKm = 9, DurationMin = 55, AverageHr = 140 },
+        };
+
+        var c = CoachEngine.Evaluate(Today, days, new TrainingReadiness { Score = 70 }, null, plan, null, activities: activities);
+
+        Assert.True(c.TrainedToday);
+        Assert.DoesNotContain("Erledigt", c.Headline); // a run doesn't tick off the planned strength session
+        Assert.Contains(c.Rationale, r => r.Contains("steht aber noch aus"));
+    }
+
+    [Fact]
     public void Coach_KeepsPrescribingWhenNotYetTrained()
     {
         var days = new List<DayMetrics>

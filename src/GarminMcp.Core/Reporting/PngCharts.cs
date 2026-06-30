@@ -149,7 +149,7 @@ public static class PngCharts
         {
             var tl = cur.KmByType.OrderByDescending(kv => kv.Value).ToList();
             BarChart(Add, "typesplit", "🥧 Diese Woche nach Sportart (km)",
-                tl.Select(kv => kv.Key).ToList(), tl.Select(kv => (double?)kv.Value).ToList(), "#af52de");
+                tl.Select(kv => MarkdownRenderer.SportDe(kv.Key)).ToList(), tl.Select(kv => (double?)kv.Value).ToList(), "#af52de");
         }
 
         return refs;
@@ -485,8 +485,8 @@ public static class PngCharts
             ("HRV", latest?.HrvLastNight is int hv ? $"{hv}" : "–"),
             ("SCHLAF", latest?.SleepHours is double sh ? $"{sh:0.0}h" : "–"),
             ("BODY BATT.", latest?.BodyBatteryHigh is int bb ? $"{bb}" : "–"),
-            ("FORM", c?.Tsb is double tsb ? tsb.ToString("+0;-0;0", CultureInfo.InvariantCulture) : "–"),
-            ("KM/WOCHE", cur.Km > 0 ? cur.Km.ToString("0.#", CultureInfo.InvariantCulture) : "–"),
+            ("FORM", c?.Tsb is double tsb ? tsb.ToString("+0;-0;0") : "–"),
+            ("KM/WOCHE", cur.Km > 0 ? cur.Km.ToString("0.#") : "–"),
         };
         const float gx = 300, gy = 66, gh = 150;
         var gw = w - 28 - gx;
@@ -643,5 +643,5 @@ public static class PngCharts
     private static string Short(string isoDate) => isoDate.Length >= 10 ? isoDate[5..] : isoDate;
 
     private static string Round(double v) =>
-        (Math.Abs(v) >= 100 ? Math.Round(v) : Math.Round(v, 1)).ToString(CultureInfo.InvariantCulture);
+        (Math.Abs(v) >= 100 ? Math.Round(v) : Math.Round(v, 1)).ToString();
 }

@@ -178,11 +178,21 @@ public static class CoachEngine
             var doneKm = completedToday.Sum(a => a.DistanceKm ?? 0);
             var doneMin = completedToday.Sum(a => a.DurationMin ?? 0);
             var summary = string.Join(", ", completedToday.Select(DescribeActivity));
+
+            // Sport must match: a run doesn't satisfy a planned strength session and vice versa.
+            bool DoneIs(string key) => completedToday.Any(a => (a.Type ?? "").Contains(key, StringComparison.OrdinalIgnoreCase));
+            var sportMatches = plannedToday?.Type switch
+            {
+                SessionType.Strength => DoneIs("strength") || DoneIs("kraft"),
+                SessionType.Easy or SessionType.Long or SessionType.Quality or SessionType.Race => DoneIs("run") || DoneIs("lauf"),
+                _ => true, // Rest / Other / no plan: any completed activity counts
+            };
             var coversPlan = plannedToday is null
                 || plannedToday.Type is SessionType.Rest
-                || (plannedToday.DistanceKm is double pk && pk > 0 && doneKm >= pk * 0.6)
-                || (plannedToday.DurationMin is double pm && pm > 0 && doneMin >= pm * 0.6)
-                || (plannedToday.DistanceKm is null && plannedToday.DurationMin is null && (doneKm >= 5 || doneMin >= 30));
+                || (sportMatches && (
+                       (plannedToday.DistanceKm is double pk && pk > 0 && doneKm >= pk * 0.6)
+                    || (plannedToday.DurationMin is double pm && pm > 0 && doneMin >= pm * 0.6)
+                    || (plannedToday.DistanceKm is null && plannedToday.DurationMin is null && (doneKm >= 5 || doneMin >= 30))));
 
             if (coversPlan)
             {
