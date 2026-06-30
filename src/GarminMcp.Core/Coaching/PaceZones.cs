@@ -1,0 +1,112 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using GarminMcp.Core.Metrics;
+
+namespace GarminMcp.Core.Coaching;
+
+/// <summary>A single training pace band (seconds per km).</summary>
+public sealed record PaceZone(string Name, string Key, int LowSecPerKm, int HighSecPerKm)
+{
+    public string Range => LowSecPerKm == HighSecPerKm
+        ? Fmt(LowSecPerKm)
+        : $"{Fmt(LowSecPerKm)}–{Fmt(HighSecPerKm)}";
+
+    public static string Fmt(int secPerKm) => $"{secPerKm / 60}:{secPerKm % 60:00}/km";
+}
+
+/// <summary>Training pace bands derived from Garmin race predictions.</summary>
+public sealed class PaceZones
+{
+    public List<PaceZone> Zones { get; set; } = new();
+    public int? MarathonPaceSecPerKm { get; set; }
+
+    public PaceZone? ByKey(string key) => Zones.FirstOrDefault(z => z.Key == key);
+}
+
+/// <summary>
+/// Derives easy/marathon/threshold/interval training paces from Garmin's race-time
+/// predictions (5K/10K/HM/M). Pragmatic Daniels-style anchoring: intervals ≈ 5K pace,
+/// threshold ≈ half-marathon/10K pace, marathon pace from the marathon prediction, easy =
+/// marathon pace + a generous aerobic buffer. Returns null if there are no usable predictions.
+/// </summary>
+public static class PaceCalculator
+{
+    public static PaceZones? FromPredictions(RacePrediction? race)
+    {
+        if (race is null) return null;
+
+        int? mp = PacePerKm(race.MarathonSeconds, 42.195);
+        int? hm = PacePerKm(race.HalfMarathonSeconds, 21.0975);
+        int? tenK = PacePerKm(race.TenKSeconds, 10.0);
+        int? fiveK = PacePerKm(race.FiveKSeconds, 5.0);
+
+        // Fill gaps with sensible relationships when a prediction is missing. Prefer real
+        // shorter-distance predictions; the marathon-only fallbacks use VDOT-style offsets so the
+        // high-intensity bands aren't compressed too slow (threshold ≈ MP−22 s, interval ≈ MP−50 s).
+        mp ??= hm is int h ? h + 18 : tenK is int t ? t + 30 : fiveK is int f ? f + 45 : null;
+        var threshold = hm ?? (tenK is int tt ? tt + 10 : mp is int m1 ? m1 - 22 : null);
+        var interval = fiveK ?? (tenK is int t2 ? t2 - 15 : threshold is int th ? th - 28 : null);
+        if (mp is null && threshold is null && interval is null) return null;
+
+        var zones = new List<PaceZone>();
+        if (mp is int marathon)
+        {
+            zones.Add(new PaceZone("Erholung", "recovery", marathon + 75, marathon + 105));
+            zones.Add(new PaceZone("Locker (GA1)", "easy", marathon + 45, marathon + 75));
+            zones.Add(new PaceZone("Marathon", "marathon", marathon, marathon));
+        }
+        if (threshold is int thr)
+            zones.Add(new PaceZone("Schwelle/Tempo", "threshold", thr - 5, thr + 5));
+        if (interval is int itv)
+            zones.Add(new PaceZone("Intervall (VO₂max)", "interval", itv - 6, itv + 4));
+
+        return zones.Count == 0 ? null : new PaceZones { Zones = zones, MarathonPaceSecPerKm = mp };
+    }
+
+    /// <summary>The target pace band for the recommended session type (display text), if known.</summary>
+    public static string? TargetForSession(PaceZones zones, SessionType session) => session switch
+    {
+        SessionType.Easy => zones.ByKey("easy")?.Range,
+        SessionType.Long => zones.ByKey("easy") is { } e ? $"{e.Range} (Longrun-Tempo)" : null,
+        SessionType.Race => zones.ByKey("marathon")?.Range,
+        SessionType.Quality => Join(zones.ByKey("threshold")?.Range is { } t ? $"Tempo {t}" : null,
+                                    zones.ByKey("interval")?.Range is { } i ? $"Intervall {i}" : null),
+        _ => zones.ByKey("easy")?.Range,
+    };
+
+    private static string? Join(string? a, string? b) =>
+        a is null ? b : b is null ? a : $"{a} · {b}";
+
+    private static int? PacePerKm(int? seconds, double km) =>
+        seconds is int s && s > 0 && km > 0 ? (int)Math.Round(s / km) : null;
+}
+
+/// <summary>Parses a goal-time string ("sub 3:45", "3:45:00", "3h45") into seconds.</summary>
+public static class GoalParser
+{
+    public static int? ToSeconds(string? goal)
+    {
+        if (string.IsNullOrWhiteSpace(goal)) return null;
+        var g = goal.Trim().ToLowerInvariant().Replace("sub", "").Replace("unter", "").Trim();
+
+        // h:mm:ss or h:mm
+        var m = Regex.Match(g, @"(\d{1,2}):(\d{2})(?::(\d{2}))?");
+        if (m.Success)
+        {
+            var h = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+            var min = int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+            var sec = m.Groups[3].Success ? int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture) : 0;
+            return h * 3600 + min * 60 + sec;
+        }
+
+        // "3h45" / "3h45m"
+        m = Regex.Match(g, @"(\d{1,2})\s*h\s*(\d{1,2})?");
+        if (m.Success)
+        {
+            var h = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+            var min = m.Groups[2].Success ? int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) : 0;
+            return h * 3600 + min * 60;
+        }
+        return null;
+    }
+}

@@ -85,7 +85,7 @@ public class ReportingTests
         Assert.Equal(7.7, d.SleepHours);
         Assert.Equal(11240, d.Steps);
         Assert.Equal(96, d.BodyBatteryHigh);
-        Assert.Equal(40, d.IntensityMinutes);
+        Assert.Equal(50, d.IntensityMinutes); // 30 moderate + 2×10 vigorous (Garmin/WHO doubling)
 
         var a = Assert.Single(report.Activities);
         Assert.Equal(5.0, a.DistanceKm);

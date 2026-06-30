@@ -58,7 +58,7 @@ try
         var coach = new LlmCoach(llmHttp, ghToken!,
             Environment.GetEnvironmentVariable("GITHUB_MODELS_ENDPOINT"),
             Environment.GetEnvironmentVariable("GITHUB_MODELS_MODEL"));
-        fresh.CoachInsight = await coach.GenerateInsightAsync(fresh.Coaching, fresh.Days);
+        fresh.CoachInsight = await coach.GenerateInsightAsync(fresh.Coaching, fresh.Days, fresh.Alerts);
         Console.Error.WriteLine(fresh.CoachInsight is null
             ? "[garmin-report] LLM insight unavailable; using rule-based text."
             : "[garmin-report] LLM insight generated.");

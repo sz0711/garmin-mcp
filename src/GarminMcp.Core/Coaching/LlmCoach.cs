@@ -32,7 +32,8 @@ public sealed class LlmCoach
     }
 
     public async Task<string?> GenerateInsightAsync(
-        DailyCoaching coaching, IReadOnlyList<DayMetrics>? recentDays = null, CancellationToken cancellationToken = default)
+        DailyCoaching coaching, IReadOnlyList<DayMetrics>? recentDays = null,
+        IReadOnlyList<HealthAlert>? alerts = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -44,7 +45,7 @@ public sealed class LlmCoach
                 messages = new object[]
                 {
                     new { role = "system", content = SystemPrompt },
-                    new { role = "user", content = BuildUserPrompt(coaching, recentDays) },
+                    new { role = "user", content = BuildUserPrompt(coaching, recentDays, alerts) },
                 },
             };
 
@@ -82,7 +83,10 @@ public sealed class LlmCoach
         "1) Was heute konkret zu tun ist. Halte dich STRIKT an die vorgegebene 'Empfohlene Einheit' " +
         "(Ruhetag/locker/moderat/hart) — schwäche sie nicht ab und mache aus einem Ruhe-/Erholungstag nichts " +
         "Härteres. Ist eine strukturierte Einheit geplant und die Readiness lässt sie zu, nenne die konkreten " +
-        "Eckdaten (Distanz/Dauer, Pace/HR aus der Struktur), ggf. mit Anpassung.\n" +
+        "Eckdaten (Distanz/Dauer, Pace/HR aus der Struktur), ggf. mit Anpassung. WENN HEUTE BEREITS EINE EINHEIT " +
+        "ABSOLVIERT WURDE (Feld 'Heute bereits trainiert'), erkenne das ausdrücklich an und richte die Empfehlung " +
+        "auf Regeneration, Auffüllen und höchstens lockeres Auslaufen/Mobilität aus — verordne KEINE zweite harte " +
+        "Einheit. Gibt es ein 'Zieltempo heute', nenne es konkret.\n" +
         "2) Der wichtigste Grund (EIN Treiber: HRV-Trend, Ruhepuls, Schlaf, Body Battery oder Trainingslast).\n" +
         "3) Kurzer Ausblick auf die nächste Schlüsseleinheit/den Longrun, sodass heute darauf hinarbeitet.\n" +
         "4) Eine konkrete Ernährungsempfehlung für heute: nenne 2–3 passende Lebensmittel/Mahlzeiten, die zu den " +
@@ -91,12 +95,21 @@ public sealed class LlmCoach
         "sondern setze sie in praktische Mahlzeiten um.\n" +
         "Sei motivierend und konkret, aber ehrlich bei Warnsignalen (Krankheitsmuster → Ruhe).";
 
-    private static string BuildUserPrompt(DailyCoaching c, IReadOnlyList<DayMetrics>? recentDays)
+    private static string BuildUserPrompt(DailyCoaching c, IReadOnlyList<DayMetrics>? recentDays, IReadOnlyList<HealthAlert>? alerts)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Datum: {c.Date}");
         sb.AppendLine($"Readiness-Bewertung: {c.Readiness}{(c.ReadinessScore is int s ? $"; Garmin Training Readiness {s}{(c.ReadinessLevel is null ? "" : "/" + c.ReadinessLevel)}" : "")}");
         sb.AppendLine($"Empfohlene Einheit (Leitplanke, NICHT abschwächen): {c.Recommended} — {c.Headline}");
+        if (c.CompletedToday.Count > 0)
+            sb.AppendLine($"Heute bereits trainiert: {string.Join(", ", c.CompletedToday.Select(a => $"{a.Name ?? a.Type ?? "Lauf"}{(a.DistanceKm is double km ? $" {km:0.#} km" : "")}{(a.DurationMin is double m ? $" / {m:0} min" : "")}"))}");
+        if (!string.IsNullOrWhiteSpace(c.TodayTargetPace))
+            sb.AppendLine($"Zieltempo heute: {c.TodayTargetPace}");
+        if (alerts is not null)
+        {
+            var actionable = alerts.Where(a => a.Level is AlertLevel.Red or AlertLevel.Amber).Select(a => a.Title).ToList();
+            if (actionable.Count > 0) sb.AppendLine($"Warnsignale (Frühwarnsystem): {string.Join("; ", actionable)}");
+        }
         if (c.Flags.Count > 0) sb.AppendLine($"Erholungs-Flags: {string.Join("; ", c.Flags)}");
         if (c.Rationale.Count > 0) sb.AppendLine($"Kontext: {string.Join("; ", c.Rationale)}");
 
@@ -134,6 +147,8 @@ public sealed class LlmCoach
         if (c.RaceDate is not null) sb.AppendLine($"Rennen: {c.RaceDate}{(c.DaysToRace is int d ? $" (in {d} Tagen)" : "")}");
         if (c.Race?.MarathonSeconds is int ms) sb.AppendLine($"Marathon-Prognose: {ms / 3600}:{(ms % 3600) / 60:00}:{ms % 60:00}");
         if (!string.IsNullOrWhiteSpace(c.Goal)) sb.AppendLine($"Zielzeit: {c.Goal}");
+        if (c.OnTrackForGoal is bool ot)
+            sb.AppendLine($"Zielabgleich: Marathon-Prognose ist {(ot ? "auf Kurs (schneller als Ziel)" : "noch über der Zielzeit")}{(c.GoalGapSeconds is int g ? $", Differenz {(g <= 0 ? "-" : "+")}{Math.Abs(g) / 60} min" : "")}.");
         if (c.TaperNote is not null) sb.AppendLine($"Taper-Kontext: {c.TaperNote}");
         if (c.Nutrition is { } n)
             sb.AppendLine($"Makro-Ziel heute ({n.DayType}): ~{n.CalorieTarget} kcal — Kohlenhydrate {n.CarbsG} g, Eiweiß {n.ProteinG} g, Fett {n.FatG} g{(n.WeightKg is double w ? $" (Gewicht {w} kg)" : "")}.");

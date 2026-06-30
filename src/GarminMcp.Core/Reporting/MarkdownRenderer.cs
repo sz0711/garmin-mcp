@@ -27,9 +27,12 @@ public static class MarkdownRenderer
         sb.AppendLine();
 
         AppendKpiBar(sb, report, days, today);
+        AppendAlerts(sb, report.Alerts);
         AppendCoaching(sb, report);
+        AppendPaceZones(sb, report.Coaching?.Paces);
         AppendLatestDay(sb, days);
         AppendWeek(sb, report, today);
+        AppendSeasonBests(sb, report.PersonalBests);
         AppendChartImages(sb, charts);
         AppendDetails(sb, report, days);
 
@@ -71,6 +74,57 @@ public static class MarkdownRenderer
         sb.AppendLine();
     }
 
+    // ---- Early-warning system ------------------------------------------------
+    private static void AppendAlerts(StringBuilder sb, IReadOnlyList<HealthAlert> alerts)
+    {
+        if (alerts is null || alerts.Count == 0) return;
+        var actionable = alerts.Where(a => a.Level != AlertLevel.Good).ToList();
+        if (actionable.Count == 0)
+        {
+            var g = alerts[0];
+            sb.AppendLine($"> {g.Icon} **{g.Title}** — {g.Detail}");
+            sb.AppendLine();
+            return;
+        }
+
+        sb.AppendLine("## 🚨 Frühwarnsystem");
+        sb.AppendLine();
+        foreach (var a in actionable)
+        {
+            var badge = a.Level switch { AlertLevel.Red => "🔴", AlertLevel.Amber => "🟡", _ => "🔵" };
+            sb.AppendLine($"- {badge} {a.Icon} **{a.Title}** — {a.Detail}");
+        }
+        sb.AppendLine();
+    }
+
+    // ---- Training pace zones --------------------------------------------------
+    private static void AppendPaceZones(StringBuilder sb, PaceZones? paces)
+    {
+        if (paces is null || paces.Zones.Count == 0) return;
+        sb.AppendLine("## 🎯 Zieltempo-Zonen");
+        sb.AppendLine();
+        sb.AppendLine("_Abgeleitet aus deinen Garmin-Renn-Prognosen._");
+        sb.AppendLine();
+        sb.AppendLine("| Zone | Tempo |");
+        sb.AppendLine("|---|--:|");
+        foreach (var z in paces.Zones)
+            sb.AppendLine($"| {z.Name} | {z.Range} |");
+        sb.AppendLine();
+    }
+
+    // ---- Personal bests ------------------------------------------------------
+    private static void AppendSeasonBests(StringBuilder sb, IReadOnlyList<PersonalBest> bests)
+    {
+        if (bests is null || bests.Count == 0) return;
+        sb.AppendLine("## 🏅 Bestzeiten");
+        sb.AppendLine();
+        sb.AppendLine("| Distanz | Bestwert | Datum |");
+        sb.AppendLine("|---|--:|--:|");
+        foreach (var b in bests)
+            sb.AppendLine($"| {b.Label} | **{b.Value}** | {b.Date ?? "–"} |");
+        sb.AppendLine();
+    }
+
     private static void AppendLatestDay(StringBuilder sb, List<DayMetrics> days)
     {
         var latest = days.FirstOrDefault(d => d.HasAnyData);
@@ -108,6 +162,14 @@ public static class MarkdownRenderer
         sb.AppendLine($"| ⛰️ Höhenmeter | {cur.ElevationM:0} m{Arrow(cur.ElevationM, prev.ElevationM)} | {prev.ElevationM:0} m |");
         sb.AppendLine($"| ⚡ Intensitätsminuten | {cur.IntensityMinutes}{Arrow(cur.IntensityMinutes, prev.IntensityMinutes)} | {prev.IntensityMinutes} |");
         sb.AppendLine();
+
+        if (cur.IntensityMinutes > 0)
+        {
+            var pct = (int)Math.Round(cur.IntensityMinutes / 150.0 * 100);
+            var mark = cur.IntensityMinutes >= 150 ? "✅" : "▹";
+            sb.AppendLine($"{mark} WHO-Ziel (150 Intensitätsminuten/Woche): {cur.IntensityMinutes}/150 ({pct} %)");
+            sb.AppendLine();
+        }
 
         if (cur.KmByType.Count > 0)
         {
@@ -213,6 +275,9 @@ public static class MarkdownRenderer
         else if (c.PlanNote is not null)
             sb.AppendLine($"- 📋 {c.PlanNote}");
 
+        if (!string.IsNullOrWhiteSpace(c.TodayTargetPace))
+            sb.AppendLine($"- 🎯 Zieltempo heute: {c.TodayTargetPace}");
+
         if (c.NextLongRun is not null)
             sb.AppendLine($"- 🛣️ Nächster Longrun: {c.NextLongRun.Date} ({DescribePlan(c.NextLongRun)})");
         if (c.NextQuality is not null)
@@ -231,7 +296,12 @@ public static class MarkdownRenderer
         if (formBits.Count > 0) sb.AppendLine($"- 🏋️ {string.Join(" · ", formBits)}");
 
         if (c.PlannedThisWeek is int planned && planned > 0)
-            sb.AppendLine($"- ✅ Planerfüllung diese Woche: {c.DoneThisWeek ?? 0}/{planned}");
+        {
+            var km = c.PlannedKmThisWeek is double pkm && pkm > 0
+                ? $" · {c.DoneKmThisWeek ?? 0:0.#}/{pkm:0.#} km"
+                : "";
+            sb.AppendLine($"- ✅ Planerfüllung diese Woche: {c.DoneThisWeek ?? 0}/{planned} Einheiten{km}");
+        }
         if (c.SleepConsistencyMin is double scm)
             sb.AppendLine($"- 🛏️ Schlaf-Konsistenz: ±{scm:0} min (Zubettgeh-Zeit)");
 
@@ -240,11 +310,12 @@ public static class MarkdownRenderer
             var racePart = $"🏁 Rennen: {c.RaceDate}" + (c.DaysToRace is int d ? $" (in {d} Tagen)" : "");
             if (c.Race?.MarathonSeconds is int ms) racePart += $" · Marathon-Prognose {FormatTime(ms)}";
             if (!string.IsNullOrWhiteSpace(c.Goal)) racePart += $" · Ziel {c.Goal}";
+            racePart += GoalVerdict(c);
             sb.AppendLine($"- {racePart}");
         }
         else if (c.Race?.MarathonSeconds is int ms2)
         {
-            sb.AppendLine($"- 🏁 Marathon-Prognose {FormatTime(ms2)}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $" · Ziel {c.Goal}")}");
+            sb.AppendLine($"- 🏁 Marathon-Prognose {FormatTime(ms2)}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $" · Ziel {c.Goal}")}{GoalVerdict(c)}");
         }
 
         if (c.TaperNote is not null) sb.AppendLine($"- ⏳ {c.TaperNote}");
@@ -264,8 +335,16 @@ public static class MarkdownRenderer
 
     internal static string FormatTime(int seconds)
     {
-        var ts = TimeSpan.FromSeconds(seconds);
+        var ts = TimeSpan.FromSeconds(Math.Abs(seconds));
         return ts.Hours > 0 ? $"{ts.Hours}:{ts.Minutes:00}:{ts.Seconds:00}" : $"{ts.Minutes}:{ts.Seconds:00}";
+    }
+
+    private static string GoalVerdict(DailyCoaching c)
+    {
+        if (c.OnTrackForGoal is not bool ot) return "";
+        if (ot)
+            return c.GoalGapSeconds is int g ? $" · ✅ auf Kurs ({FormatTime(g)} Puffer)" : " · ✅ auf Kurs";
+        return c.GoalGapSeconds is int g2 ? $" · ⚠️ {FormatTime(g2)} über Ziel" : " · ⚠️ hinter Ziel";
     }
 
     private static string Arrow(double cur, double? prev)

@@ -29,6 +29,9 @@ public static class PngCharts
         ["bodybattery"] = "Body Battery (Tageshoch, 0–100): Garmins Energiespeicher aus HRV, Stress und Aktivität. Hohe Peaks = gut erholt; niedrige Höchstwerte deuten auf unzureichende Regeneration hin.",
         ["stress"] = "Durchschnittlicher Stresslevel (0–100), aus der HRV über den Tag. Niedrig heißt entspanntes Nervensystem; dauerhaft hohe Werte bremsen deine Erholung.",
         ["vo2max"] = "Geschätzte VO₂max (maximale Sauerstoffaufnahme) – dein wichtigster Ausdauer-Fitnessmarker. Sie steigt langsam mit konsequentem Training; ein Aufwärtstrend zeigt wachsende aerobe Leistungsfähigkeit, ein Abfall mögliche Ermüdung oder Formverlust.",
+        ["weight"] = "Körpergewicht über die Zeit. Entscheidend ist der stabile Trend, nicht der einzelne Tag (kurzfristige Schwankungen sind meist Wasser/Glykogen). Starke ungewollte Abnahme kann auf zu hohe Belastung oder Unterversorgung hindeuten.",
+        ["marathon"] = "Garmins prognostizierte Marathon-Zeit über die Zeit – niedriger ist schneller. Die grüne Linie ist deine Zielzeit: liegt die Prognose darunter, bist du auf Kurs.",
+        ["heatmap"] = "Trainingslast pro Tag der letzten 12 Wochen (Dauer × Intensität) – je dunkler, desto höher. Zeigt auf einen Blick Konstanz, Belastungsblöcke und Ruhetage. Gleichmäßige Muster mit klaren Erholungstagen sind ideal.",
         ["acwr"] = "Verhältnis akuter (7 Tage) zu chronischer (28 Tage) Belastung. Der grüne Bereich 0,8–1,3 ist optimal; weit darüber (>1,5) steigt das Verletzungsrisiko, darunter verlierst du Form.",
         ["bedtime"] = "Zubettgeh-Uhrzeit über die Zeit. Konstante Zeiten (flache Linie) stabilisieren deinen Rhythmus und verbessern Erholung sowie HRV; stark schwankende Zeiten stören den Schlaf.",
         ["weeklykm"] = "Wöchentliche Laufkilometer als Balken. Achte auf gleichmäßigen Aufbau (Faustregel: max. ca. 10 % mehr pro Woche) mit regelmäßigen Entlastungswochen. Zu steile Sprünge erhöhen das Verletzungsrisiko.",
@@ -74,6 +77,11 @@ public static class PngCharts
             }, zeroLine: true));
         }
 
+        // Training-load calendar heatmap (last 12 weeks) — a flagship "consistency at a glance" view.
+        var load = DailyLoad(report.Activities);
+        if (load.Count > 0)
+            Add("heatmap", "🗓️ Trainingslast-Kalender (12 Wochen)", f => DrawHeatmap(f, today, load, 12));
+
         LineChart(Add, "readiness", "🎯 Readiness", labels, days.Select(d => d.ReadinessScore is int r ? (double?)r : null).ToList(), "#5856d6");
 
         var rhr = days.Select(d => d.RestingHeartRate is int v ? (double?)v : null).ToList();
@@ -95,6 +103,16 @@ public static class PngCharts
         LineChart(Add, "bodybattery", "🔋 Body Battery (Peak)", labels, days.Select(d => d.BodyBatteryHigh is int v ? (double?)v : null).ToList(), "#34c759");
         BarChart(Add, "stress", "😰 Stress (Ø)", labels, days.Select(d => d.StressAvg is int v ? (double?)v : null).ToList(), "#ff375f");
         LineChart(Add, "vo2max", "🫁 VO₂max", labels, days.Select(d => d.Vo2Max).ToList(), "#bf5af2");
+        LineChart(Add, "weight", "⚖️ Gewicht (kg)", labels, days.Select(d => d.WeightKg).ToList(), "#64d2ff");
+
+        // Marathon-prediction trend with the goal time as a reference line.
+        var marathon = days.Select(d => d.MarathonSeconds is int s ? (double?)Math.Round(s / 60.0, 1) : null).ToList();
+        if (marathon.Count(x => x.HasValue) >= 2)
+        {
+            (double, string)? goalRef = report.Coaching?.GoalSeconds is int gs ? (gs / 60.0, $"Ziel {gs / 3600}:{(gs % 3600) / 60:00}") : null;
+            Add("marathon", "⏱️ Marathon-Prognose (min)", f => Draw(f, labels,
+                new[] { new Series("Prognose", "#ff9f0a", marathon, false) }, refLine: goalRef));
+        }
 
         var acwr = days.Select(d => d.Acwr).ToList();
         if (acwr.Count(x => x.HasValue) >= 2)
@@ -133,13 +151,15 @@ public static class PngCharts
     private sealed record Series(string Name, string Color, IReadOnlyList<double?> Values, bool Bar);
 
     private static void Draw(string file, IReadOnlyList<string> labels, IReadOnlyList<Series> series,
-        (double Lo, double Hi)? band = null, bool zeroLine = false, bool zeroBaseline = false)
+        (double Lo, double Hi)? band = null, bool zeroLine = false, bool zeroBaseline = false,
+        (double Value, string Label)? refLine = null)
     {
         var present = series.SelectMany(s => s.Values).Where(v => v.HasValue).Select(v => v!.Value).ToList();
         if (present.Count == 0) return;
 
         double min = present.Min(), max = present.Max();
         if (band is { } b) { min = Math.Min(min, b.Lo); max = Math.Max(max, b.Hi); }
+        if (refLine is { } rl) { min = Math.Min(min, rl.Value); max = Math.Max(max, rl.Value); }
         if (zeroBaseline) min = Math.Min(min, 0);
         if (zeroLine) { min = Math.Min(min, 0); max = Math.Max(max, 0); }
         if (max <= min) { max = min + 1; }
@@ -187,6 +207,16 @@ public static class PngCharts
             canvas.DrawLine(PadL, y0, W - PadR, y0, zp);
         }
 
+        // reference line (e.g. goal time)
+        if (refLine is { } rf)
+        {
+            using var rp = new SKPaint { Color = new SKColor(0x30, 0xD1, 0x58), StrokeWidth = 2, IsAntialias = true, PathEffect = SKPathEffect.CreateDash(new[] { 6f, 4f }, 0) };
+            var yr = (float)Y(rf.Value);
+            canvas.DrawLine(PadL, yr, W - PadR, yr, rp);
+            using var rt = new SKPaint { Color = new SKColor(0x1f, 0x9d, 0x44), TextSize = 15, IsAntialias = true };
+            canvas.DrawText(rf.Label, PadL + 4, yr - 5, rt);
+        }
+
         // x labels — evenly spaced, as many as fit without overlapping (bars: centred on the bar)
         if (n > 0)
         {
@@ -195,7 +225,10 @@ public static class PngCharts
             float LabelX(int i) => isBar ? (float)(PadL + i * slot + slot / 2) : (float)X(i);
 
             // Evenly distribute k labels across [0, n-1] (first & last always shown, equal spacing).
-            var k = Math.Max(2, Math.Min(n, (int)Math.Round(plotW / 130.0))); // ~130px per label
+            // Spacing adapts to the widest label so long categorical names (e.g. sport types) don't overlap.
+            var maxLblW = labels.Count > 0 ? labels.Max(l => text.MeasureText(l)) : 40f;
+            var minSpacing = Math.Max(130.0, maxLblW + 22);
+            var k = Math.Max(2, Math.Min(n, (int)Math.Round(plotW / minSpacing)));
             var idx = new List<int>();
             for (var j = 0; j < k; j++) idx.Add((int)Math.Round((double)j * (n - 1) / (k - 1)));
 
@@ -263,7 +296,101 @@ public static class PngCharts
 
         using var image = surface.Snapshot();
         using var data = image.Encode(SKEncodedImageFormat.Png, 90);
-        using var fs = File.OpenWrite(file);
+        using var fs = new FileStream(file, FileMode.Create, FileAccess.Write);
+        data.SaveTo(fs);
+    }
+
+    // Per-day training load (TRIMP proxy: duration × HR intensity), summed across activities.
+    private static Dictionary<string, double> DailyLoad(IReadOnlyList<ActivitySummary> acts)
+    {
+        var d = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var a in acts)
+        {
+            if (a.DurationMin is not double min || min <= 0) continue;
+            var intensity = a.AverageHr is int hr && hr > 0 ? Math.Clamp(hr / 140.0, 0.6, 2.0) : 1.0;
+            d[a.Date] = d.GetValueOrDefault(a.Date) + min * intensity;
+        }
+        return d;
+    }
+
+    private static readonly string[] MonthsDe =
+        { "Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez" };
+
+    /// <summary>GitHub-style contribution calendar of daily training load (weeks × weekdays).</summary>
+    private static void DrawHeatmap(string file, DateOnly today, Dictionary<string, double> load, int weeks)
+    {
+        const int cell = 26, gap = 5, step = cell + gap;
+        const int leftPad = 36, topPad = 24, bottomPad = 30, rightPad = 14;
+        var width = leftPad + weeks * step + rightPad;
+        var height = topPad + 7 * step + bottomPad;
+
+        var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        var start = monday.AddDays(-(weeks - 1) * 7);
+
+        double maxLoad = 0;
+        for (var i = 0; i < weeks * 7; i++)
+        {
+            var date = start.AddDays(i);
+            if (date > today) continue;
+            if (load.TryGetValue(date.ToString("yyyy-MM-dd"), out var v)) maxLoad = Math.Max(maxLoad, v);
+        }
+        if (maxLoad <= 0) maxLoad = 1;
+
+        using var surface = SKSurface.Create(new SKImageInfo(width, height));
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.White);
+
+        var empty = new SKColor(0xEB, 0xED, 0xF0);
+        SKColor[] scale = { new(0xC6, 0xE8, 0xC0), new(0x7B, 0xC9, 0x6F), new(0x34, 0xC7, 0x59), new(0x1B, 0x7A, 0x30) };
+
+        using var label = new SKPaint { Color = new SKColor(0x88, 0x88, 0x8C), TextSize = 14, IsAntialias = true };
+
+        string[] wd = { "Mo", "", "Mi", "", "Fr", "", "" };
+        for (var r = 0; r < 7; r++)
+            if (wd[r].Length > 0)
+                canvas.DrawText(wd[r], 6, topPad + r * step + cell - 7, label);
+
+        var lastMonth = -1;
+        for (var w = 0; w < weeks; w++)
+        {
+            var colMonday = start.AddDays(w * 7);
+            if (colMonday.Month != lastMonth)
+            {
+                lastMonth = colMonday.Month;
+                canvas.DrawText(MonthsDe[colMonday.Month - 1], leftPad + w * step, topPad - 8, label);
+            }
+            for (var r = 0; r < 7; r++)
+            {
+                var date = start.AddDays(w * 7 + r);
+                if (date > today) continue;
+                float x = leftPad + w * step, y = topPad + r * step;
+                var col = empty;
+                if (load.TryGetValue(date.ToString("yyyy-MM-dd"), out var v) && v > 0)
+                {
+                    var bucket = (int)Math.Ceiling(v / maxLoad * 4);
+                    col = scale[Math.Clamp(bucket - 1, 0, 3)];
+                }
+                using var p = new SKPaint { Color = col, IsAntialias = true };
+                canvas.DrawRoundRect(x, y, cell, cell, 5, 5, p);
+            }
+        }
+
+        // legend: weniger ▢▢▢▢▢ mehr
+        var legendY = (float)(height - 12);
+        float lx = leftPad;
+        canvas.DrawText("weniger", lx, legendY, label);
+        lx += label.MeasureText("weniger") + 8;
+        foreach (var c in new[] { empty }.Concat(scale))
+        {
+            using var sp = new SKPaint { Color = c, IsAntialias = true };
+            canvas.DrawRoundRect(lx, legendY - 13, 15, 15, 4, 4, sp);
+            lx += 19;
+        }
+        canvas.DrawText("mehr", lx + 2, legendY, label);
+
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        using var fs = new FileStream(file, FileMode.Create, FileAccess.Write);
         data.SaveTo(fs);
     }
 

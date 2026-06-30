@@ -42,7 +42,22 @@ public sealed class DailyCoaching
     public double? Tsb { get; set; }   // Form
     public int? PlannedThisWeek { get; set; }
     public int? DoneThisWeek { get; set; }
+    public double? PlannedKmThisWeek { get; set; }
+    public double? DoneKmThisWeek { get; set; }
     public double? SleepConsistencyMin { get; set; }
+
+    // What was already trained today (so the coach doesn't prescribe a second session).
+    public List<ActivitySummary> CompletedToday { get; set; } = new();
+    public bool TrainedToday => CompletedToday.Count > 0;
+
+    // Goal projection (parsed goal vs Garmin marathon prediction).
+    public int? GoalSeconds { get; set; }
+    public int? GoalGapSeconds { get; set; }   // predicted - goal (negative = ahead of goal)
+    public bool? OnTrackForGoal { get; set; }
+
+    // Training pace bands derived from race predictions.
+    public PaceZones? Paces { get; set; }
+    public string? TodayTargetPace { get; set; }
 }
 
 /// <summary>
@@ -61,7 +76,8 @@ public static class CoachEngine
         TrainingPlanView plan,
         RacePrediction? race,
         string? goal = null,
-        double? weightKg = null)
+        double? weightKg = null,
+        IReadOnlyList<ActivitySummary>? activities = null)
     {
         var todayKey = today.ToString("yyyy-MM-dd");
         var todayM = days.FirstOrDefault(d => d.Date == todayKey);
@@ -146,15 +162,63 @@ public static class CoachEngine
                 : "Taper phase — volume should drop while you keep a little intensity. Resist the urge to add extra hard sessions.";
         }
 
+        // --- Already trained today? Don't prescribe a second session; pivot to recovery. ---
+        var completedToday = (activities ?? Array.Empty<ActivitySummary>())
+            .Where(a => a.Date == todayKey)
+            .ToList();
+        var nutritionSession = recommended;
+        if (completedToday.Count > 0)
+        {
+            var doneKm = completedToday.Sum(a => a.DistanceKm ?? 0);
+            var doneMin = completedToday.Sum(a => a.DurationMin ?? 0);
+            var summary = string.Join(", ", completedToday.Select(DescribeActivity));
+            var coversPlan = plannedToday is null
+                || plannedToday.Type is SessionType.Rest
+                || (plannedToday.DistanceKm is double pk && pk > 0 && doneKm >= pk * 0.6)
+                || (plannedToday.DurationMin is double pm && pm > 0 && doneMin >= pm * 0.6)
+                || (plannedToday.DistanceKm is null && plannedToday.DurationMin is null && (doneKm >= 5 || doneMin >= 30));
+
+            if (coversPlan)
+            {
+                var doneType = InferDoneType(doneKm, completedToday);
+                // Fuel for what was actually done + the (possibly downgraded) recommendation — NOT the
+                // planned type, which Reconcile may have just vetoed on a red-recovery day.
+                nutritionSession = Hardest(recommended, doneType);
+                rationale.Insert(0, $"Heute bereits erledigt: {summary}. Tagesziel erfüllt — jetzt Regeneration, Auffüllen (Carbs + Eiweiß) und Schlaf.");
+                planNote = $"✅ Heute schon trainiert ({summary}). Keine weitere harte Einheit nötig — locker auslaufen/mobilisieren ist ok.";
+            }
+            else
+            {
+                rationale.Insert(0, $"Heute bereits absolviert: {summary} — die geplante Schlüsseleinheit steht aber noch aus.");
+            }
+        }
+
         // --- Rationale ---
         if (flags.Count == 0)
-            rationale.Insert(0, "Recovery signals are in your normal range.");
+            rationale.Add("Recovery signals are in your normal range.");
         else
-            rationale.Insert(0, "Driven by: " + string.Join("; ", flags));
+            rationale.Add("Driven by: " + string.Join("; ", flags));
         if (status?.StatusPhrase is { Length: > 0 } sp)
             rationale.Add($"Training status: {Humanize(sp)}.");
 
-        var headline = Headline(rating, recommended, plannedToday);
+        var trainedAndDone = completedToday.Count > 0 && planNote?.StartsWith("✅") == true;
+        var headline = trainedAndDone
+            ? $"✅ Erledigt — Regeneration ({completedToday.Sum(a => a.DistanceKm ?? 0):0.#} km)"
+            : Headline(rating, recommended, plannedToday);
+
+        // --- Pace zones + today's target ---
+        var paces = PaceCalculator.FromPredictions(race);
+        var todayTarget = trainedAndDone ? null
+            : paces is not null ? PaceCalculator.TargetForSession(paces, recommended) : null;
+
+        // --- Goal projection (parsed goal vs Garmin marathon prediction) ---
+        int? goalSeconds = GoalParser.ToSeconds(goal);
+        int? goalGap = null; bool? onTrack = null;
+        if (goalSeconds is int gs && race?.MarathonSeconds is int pms)
+        {
+            goalGap = pms - gs;
+            onTrack = pms <= gs;
+        }
 
         return new DailyCoaching
         {
@@ -178,9 +242,47 @@ public static class CoachEngine
             RaceDate = plan.RaceDate,
             DaysToRace = plan.DaysToRace,
             Goal = goal,
+            GoalSeconds = goalSeconds,
+            GoalGapSeconds = goalGap,
+            OnTrackForGoal = onTrack,
             TaperNote = taperNote,
-            Nutrition = NutritionEngine.Compute(recommended, weightKg, todayM?.Calories),
+            Nutrition = NutritionEngine.Compute(nutritionSession, weightKg, todayM?.Calories),
+            CompletedToday = completedToday,
+            Paces = paces,
+            TodayTargetPace = todayTarget,
         };
+    }
+
+    private static string DescribeActivity(ActivitySummary a)
+    {
+        var name = a.Name ?? a.Type ?? "Aktivität";
+        var bits = new List<string>();
+        if (a.DistanceKm is double km) bits.Add($"{km:0.#} km");
+        if (a.DurationMin is double m) bits.Add($"{m:0} min");
+        return bits.Count > 0 ? $"{name} ({string.Join(", ", bits)})" : name;
+    }
+
+    private static SessionType InferDoneType(double doneKm, IReadOnlyList<ActivitySummary> done)
+    {
+        if (doneKm >= 16) return SessionType.Long;
+        var avgHr = done.Select(a => a.AverageHr).Where(h => h.HasValue).Select(h => h!.Value).DefaultIfEmpty(0).Max();
+        if (avgHr >= 155 || (doneKm >= 8 && avgHr >= 150)) return SessionType.Quality;
+        return SessionType.Easy;
+    }
+
+    private static SessionType Hardest(params SessionType?[] types)
+    {
+        static int Rank(SessionType t) => t switch
+        {
+            SessionType.Rest => 0,
+            SessionType.Easy => 1,
+            SessionType.Strength => 2,
+            SessionType.Quality => 3,
+            SessionType.Long => 4,
+            SessionType.Race => 5,
+            _ => 1,
+        };
+        return types.Where(t => t.HasValue).Select(t => t!.Value).DefaultIfEmpty(SessionType.Easy).MaxBy(Rank);
     }
 
     private static (SessionType, string?) Reconcile(Readiness rating, PlannedWorkout? planned, bool illness, double? rhrDelta)

@@ -50,7 +50,8 @@ public static class ReportBuilder
                 m.BodyBatteryHigh = Pos(st.BodyBatteryHighestValue);
                 m.BodyBatteryLow = Pos(st.BodyBatteryLowestValue);
                 m.Calories = Pos((long)Math.Round(st.TotalKilocalories));
-                m.IntensityMinutes = (int)(st.ModerateIntensityMinutes + st.VigorousIntensityMinutes);
+                // Garmin/WHO intensity minutes count vigorous minutes double (75 min vigorous = 150 IM).
+                m.IntensityMinutes = (int)(st.ModerateIntensityMinutes + 2 * st.VigorousIntensityMinutes);
             }
             catch
             {
@@ -142,13 +143,22 @@ public static class ReportBuilder
             try
             {
                 var weight = await service.GetWeightAsync(Iso(start), Iso(today), cancellationToken);
-                var latest = weight.DailyWeightSummaries?
-                    .Where(s => s.LatestWeight is not null && s.LatestWeight.Weight > 0)
-                    .OrderByDescending(s => s.SummaryDate.ToString("yyyy-MM-dd"), StringComparer.Ordinal)
+                foreach (var s in weight.DailyWeightSummaries ?? Array.Empty<GarminWeightDailyWeightSummary>())
+                {
+                    var g = s.LatestWeight?.Weight ?? 0;
+                    if (g <= 0) continue;
+                    var kg = Math.Round(g > 500 ? g / 1000.0 : g, 1);
+                    var dayKey = s.SummaryDate.ToString("yyyy-MM-dd");
+                    var dd = report.Days.FirstOrDefault(d => d.Date == dayKey);
+                    if (dd is not null) dd.WeightKg = kg;
+                }
+                weightKg = report.Days
+                    .Where(d => d.WeightKg.HasValue)
+                    .OrderByDescending(d => d.Date, StringComparer.Ordinal)
+                    .Select(d => d.WeightKg)
                     .FirstOrDefault();
-                var grams = latest?.LatestWeight?.Weight ?? (weight.TotalAverage?.Weight ?? 0);
-                if (grams > 0)
-                    weightKg = Math.Round(grams > 500 ? grams / 1000.0 : grams, 1);
+                if (weightKg is null && weight.TotalAverage?.Weight is double avg && avg > 0)
+                    weightKg = Math.Round(avg > 500 ? avg / 1000.0 : avg, 1);
             }
             catch
             {
@@ -156,7 +166,10 @@ public static class ReportBuilder
             }
 
             var plan = await TrainingPlanReader.BuildAsync(service, today, cancellationToken);
-            report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal, weightKg);
+            report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal, weightKg, report.Activities);
+
+            // Early-warning system (multi-day trends across the accumulated history).
+            report.Alerts = AlertEngine.Evaluate(report.Days, status, today);
 
             if (report.Coaching is { } coaching)
             {
@@ -169,6 +182,9 @@ public static class ReportBuilder
                 var weekEnd = weekStart.AddDays(6);
                 coaching.PlannedThisWeek = plan.AllPlanned.Count(p => p.Type != SessionType.Rest && InWeek(p.Date, weekStart, weekEnd));
                 coaching.DoneThisWeek = report.Activities.Count(a => InWeek(a.Date, weekStart, weekEnd));
+                var plannedKm = plan.AllPlanned.Where(p => p.Type != SessionType.Rest && InWeek(p.Date, weekStart, weekEnd)).Sum(p => p.DistanceKm ?? 0);
+                if (plannedKm > 0) coaching.PlannedKmThisWeek = Math.Round(plannedKm, 1);
+                coaching.DoneKmThisWeek = Math.Round(report.Activities.Where(a => InWeek(a.Date, weekStart, weekEnd)).Sum(a => a.DistanceKm ?? 0), 1);
 
                 var bedtimes = report.Days
                     .Where(d => d.BedtimeHour.HasValue)
@@ -189,8 +205,53 @@ public static class ReportBuilder
             // coaching is an enrichment — leave it null on failure
         }
 
+        try
+        {
+            var prs = await service.GetPersonalRecordsAsync(cancellationToken);
+            report.PersonalBests = MapPersonalBests(prs);
+        }
+        catch
+        {
+            // personal records are optional
+        }
+
         return report;
     }
+
+    // Garmin PR typeId → (label, value-is-a-time, display order). Running records only.
+    private static readonly Dictionary<long, (string Label, bool IsTime, int Order)> PrTypes = new()
+    {
+        [1] = ("1 km", true, 1),
+        [2] = ("1 Meile", true, 2),
+        [3] = ("5 km", true, 3),
+        [4] = ("10 km", true, 4),
+        [7] = ("Längster Lauf", false, 7),
+    };
+
+    private static List<PersonalBest> MapPersonalBests(IEnumerable<GarminPersonalRecord> records)
+    {
+        var best = new Dictionary<long, GarminPersonalRecord>();
+        foreach (var r in records ?? Enumerable.Empty<GarminPersonalRecord>())
+        {
+            if (!PrTypes.TryGetValue(r.TypeId, out var meta) || r.Value <= 0) continue;
+            if (!best.TryGetValue(r.TypeId, out var ex)) { best[r.TypeId] = r; continue; }
+            // For times keep the smallest; for distances the largest.
+            if (meta.IsTime ? r.Value < ex.Value : r.Value > ex.Value) best[r.TypeId] = r;
+        }
+
+        var list = new List<PersonalBest>();
+        foreach (var (typeId, r) in best)
+        {
+            var meta = PrTypes[typeId];
+            var value = meta.IsTime ? FmtTime((int)Math.Round(r.Value)) : $"{Math.Round(r.Value / 1000.0, 1)} km";
+            var date = r.PrStartTimeGmt > 0 ? r.PrStartTimeGmtFormatted.ToString("yyyy-MM-dd") : null;
+            list.Add(new PersonalBest { Label = meta.Label, Value = value, Date = date, Order = meta.Order });
+        }
+        return list.OrderBy(p => p.Order).ToList();
+    }
+
+    private static string FmtTime(int s) =>
+        s >= 3600 ? $"{s / 3600}:{(s % 3600) / 60:00}:{s % 60:00}" : $"{s / 60}:{s % 60:00}";
 
     private static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd");
     private static int? Pos(long v) => v > 0 ? (int)v : null;

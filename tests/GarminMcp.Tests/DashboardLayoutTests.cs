@@ -56,6 +56,16 @@ public class DashboardLayoutTests
         Assert.Contains("> ", md);                         // chart explanation blockquote
         Assert.Contains("Belastbarkeit", md);             // form chart caption text
 
+        // New feature sections
+        Assert.Contains("🎯 Zieltempo-Zonen", md);
+        Assert.Contains("🏅 Bestzeiten", md);
+        Assert.Contains("WHO-Ziel", md);                  // intensity minutes vs WHO
+        Assert.Contains("auf Kurs", md);                  // goal projection verdict
+        Assert.Contains("Keine Warnsignale", md);         // early-warning all-clear
+        Assert.Contains("charts/heatmap.png", md);        // training-load calendar
+        Assert.Contains("charts/weight.png", md);         // weight trend
+        Assert.Contains("charts/marathon.png", md);       // marathon prediction trend
+
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);
         Assert.All(charts, c => Assert.True(new FileInfo(Path.Combine(tmp, c.File)).Length > 0));
@@ -86,13 +96,15 @@ public class DashboardLayoutTests
                 Calories = 2400 + i * 10,
                 IntensityMinutes = (i % 3 == 0) ? 45 : 10,
                 BedtimeHour = Math.Round(23.0 + rng[i] * 0.15, 2),
+                WeightKg = Math.Round(71.5 - i * 0.04, 1),
             });
         }
         // accumulated metrics for the most recent days
         days[^1].Vo2Max = 54; days[^2].Vo2Max = 53.8; days[^3].Vo2Max = 53.9;
         days[^1].Acwr = 1.1; days[^2].Acwr = 1.0; days[^3].Acwr = 0.95;
         days[^1].ReadinessScore = 72; days[^2].ReadinessScore = 65; days[^3].ReadinessScore = 80;
-        days[^1].MarathonSeconds = 13500; days[^2].MarathonSeconds = 13560;
+        // marathon-prediction trend (slowly improving) for the chart + goal line
+        for (var k = 0; k < 8; k++) days[^ (k + 1)].MarathonSeconds = 13620 - k * 15;
 
         var activities = new List<ActivitySummary>
         {
@@ -102,13 +114,15 @@ public class DashboardLayoutTests
             new() { Id = 4, Date = "2026-06-22", Name = "Long Run", Type = "running", DistanceKm = 16, DurationMin = 95, ElevationGainM = 150, Calories = 1050, AverageHr = 148 },
         };
 
+        var status = new TrainingStatusInfo { StatusPhrase = "PRODUCTIVE_1", Vo2Max = 54, Acwr = 1.1 };
+        var race = new RacePrediction { FiveKSeconds = 1290, TenKSeconds = 2700, HalfMarathonSeconds = 6000, MarathonSeconds = 13500 };
         var coaching = CoachEngine.Evaluate(
-            new DateOnly(2026, 6, 30), days, new TrainingReadiness { Score = 72, Level = "MODERATE" },
-            new TrainingStatusInfo { StatusPhrase = "PRODUCTIVE_1", Vo2Max = 54, Acwr = 1.1 },
-            new TrainingPlanView { Today = { new PlannedWorkout { Date = "2026-06-30", Type = SessionType.Quality, Title = "Tempo 10k" } }, DaysToRace = 26, RaceDate = "2026-07-26" },
-            new RacePrediction { MarathonSeconds = 13500 }, goal: "sub 3:45", weightKg: 70);
+            new DateOnly(2026, 6, 30), days, new TrainingReadiness { Score = 72, Level = "MODERATE" }, status,
+            new TrainingPlanView { Today = { new PlannedWorkout { Date = "2026-06-30", Type = SessionType.Quality, Title = "Tempo 10k", DistanceKm = 10 } }, DaysToRace = 26, RaceDate = "2026-07-26" },
+            race, goal: "sub 3:45", weightKg: 70, activities: activities);
         coaching.Ctl = 46; coaching.Atl = 41; coaching.Tsb = 5;
         coaching.PlannedThisWeek = 4; coaching.DoneThisWeek = 3;
+        coaching.PlannedKmThisWeek = 52; coaching.DoneKmThisWeek = 36;
         coaching.SleepConsistencyMin = 24;
 
         return new GarminReport
@@ -116,6 +130,13 @@ public class DashboardLayoutTests
             GeneratedAtUtc = DateTimeOffset.UnixEpoch,
             Coaching = coaching,
             CoachInsight = "Heute eine kontrollierte Tempo-Einheit – deine Erholung trägt das.",
+            Alerts = AlertEngine.Evaluate(days, status, new DateOnly(2026, 6, 30)),
+            PersonalBests = new()
+            {
+                new PersonalBest { Label = "5 km", Value = "21:12", Date = "2026-05-04", Order = 3 },
+                new PersonalBest { Label = "10 km", Value = "44:30", Date = "2026-04-20", Order = 4 },
+                new PersonalBest { Label = "Längster Lauf", Value = "32.1 km", Date = "2026-06-08", Order = 7 },
+            },
             Days = days,
             Activities = activities,
         };
