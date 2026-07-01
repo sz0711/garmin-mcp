@@ -36,7 +36,8 @@ public static class WeeklyReviewFactCheck
     /// <summary>Numbers (as written, e.g. "14,5" or "-8") extracted from <paramref name="reviewText"/>
     /// that don't reasonably match any known fact. Empty when everything checks out.</summary>
     public static List<string> FindUnverifiedNumbers(
-        string reviewText, WeeklyStats week, DailyCoaching? coaching, IReadOnlyList<DayMetrics>? recentDays = null)
+        string reviewText, WeeklyStats week, DailyCoaching? coaching, IReadOnlyList<DayMetrics>? recentDays = null,
+        PacingAnalysis? pacing = null)
     {
         if (string.IsNullOrWhiteSpace(reviewText)) return new List<string>();
 
@@ -45,6 +46,11 @@ public static class WeeklyReviewFactCheck
         // add noise, it could silently "verify" an unrelated hallucinated number that happens to
         // land within tolerance of it.
         var known = new List<double> { week.Km, week.Hours, week.Sessions, week.LongestKm, week.IntensityMinutes };
+        // BuildWeeklyPrompt states the pacing analysis's distance ("Letzter Longrun (..., X km)").
+        // PercentDifference/AerobicDecouplingPercent don't need to be listed here: they're always
+        // rendered with a trailing '%' in the prompt, which the percentage skip-rule below already
+        // treats as a derived ratio, not a fact to verify against.
+        if (pacing is not null) known.Add(pacing.DistanceKm);
         if (coaching is not null)
         {
             // The weekly-recap sentence in BuildWeeklyPrompt states LAST week's plan adherence

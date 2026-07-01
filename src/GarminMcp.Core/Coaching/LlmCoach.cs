@@ -81,7 +81,7 @@ public sealed class LlmCoach
     /// </summary>
     public async Task<string?> GenerateWeeklyReviewAsync(
         DailyCoaching coaching, WeeklyStats lastWeek, IReadOnlyList<DayMetrics>? recentDays = null,
-        CancellationToken cancellationToken = default)
+        PacingAnalysis? pacing = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -93,7 +93,7 @@ public sealed class LlmCoach
                 messages = new object[]
                 {
                     new { role = "system", content = WeeklySystemPrompt },
-                    new { role = "user", content = BuildWeeklyPrompt(coaching, lastWeek, recentDays) },
+                    new { role = "user", content = BuildWeeklyPrompt(coaching, lastWeek, recentDays, pacing) },
                 },
             };
             using var request = new HttpRequestMessage(HttpMethod.Post, _endpoint)
@@ -120,17 +120,33 @@ public sealed class LlmCoach
         "Du bist ein erfahrener, datengetriebener Marathon-Coach. Schreibe einen kompakten, persönlichen " +
         "Wochen-Rückblick auf Deutsch (4–6 Sätze, Fließtext, KEIN Markdown, KEINE Aufzählung):\n" +
         "1) Würdige die letzte Woche ehrlich (Umfang, Planerfüllung, Schlüsseleinheiten, Erholungstrend).\n" +
-        "2) Benenne EINE konkrete Sache, die gut lief, und EINE, an der du diese Woche arbeiten würdest.\n" +
+        "2) Benenne EINE konkrete Sache, die gut lief, und EINE, an der du diese Woche arbeiten würdest — " +
+        "ist eine Pacing-Analyse des letzten Longruns angegeben, greife sie auf, wenn sie eine sinnvolle " +
+        "konkrete Sache liefert (z. B. Fade/Positive Split ansprechen, oder kardiales Driften einordnen).\n" +
         "3) Gib einen klaren Fokus/Ausblick für die kommende Woche, abgestimmt auf Form, Erholung und Zielrennen.\n" +
         "Sei motivierend, konkret und ehrlich; übertreibe nicht und beschönige Warnsignale nicht.";
 
-    private static string BuildWeeklyPrompt(DailyCoaching c, WeeklyStats w, IReadOnlyList<DayMetrics>? recentDays)
+    private static string BuildWeeklyPrompt(DailyCoaching c, WeeklyStats w, IReadOnlyList<DayMetrics>? recentDays, PacingAnalysis? pacing = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Stichtag (Wochenstart): {c.Date}");
         sb.AppendLine($"Letzte Woche: {w.Km:0.#} km, {w.Sessions} Einheiten, längster Lauf {w.LongestKm:0.#} km, {w.Hours:0.#} h, {w.IntensityMinutes} Intensitätsminuten.");
         if (c.PlannedLastWeek is int pl && pl > 0)
             sb.AppendLine($"Planerfüllung letzte Woche: {c.DoneLastWeek ?? 0}/{pl} Einheiten{(c.PlannedKmLastWeek is double pk && pk > 0 ? $", {c.DoneKmLastWeek ?? 0:0.#}/{pk:0.#} km" : "")}.");
+        if (pacing is not null)
+        {
+            var verdictLabel = pacing.Verdict switch
+            {
+                // Deliberately "zweite Hälfte", not "2. Hälfte" -- a bare ordinal digit here would
+                // survive WeeklyReviewFactCheck's date/percent filters as a spurious plain number if
+                // the LLM echoes this phrasing back (which it's explicitly asked to do).
+                SplitVerdict.Negative => "Negative Split (zweite Hälfte schneller als die erste)",
+                SplitVerdict.Even => "gleichmäßig verteilt",
+                _ => "Positive Split/Fade (zweite Hälfte langsamer als die erste)",
+            };
+            sb.AppendLine($"Letzter Longrun ({pacing.ActivityDate}, {pacing.DistanceKm:0.#} km): {verdictLabel}, {Math.Abs(pacing.PercentDifference):0.#}% Unterschied zwischen den Hälften" +
+                (pacing.AerobicDecouplingPercent is double drift ? $", kardiales Driften {drift:0.#}%." : "."));
+        }
         if (recentDays is not null)
         {
             var rows = recentDays.OrderByDescending(d => d.Date, StringComparer.Ordinal).Take(7)

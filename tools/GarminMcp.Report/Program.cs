@@ -83,7 +83,7 @@ try
         if (existing?.WeeklyInsightWeekStart != weekStart)
         {
             var (_, prevWeek) = TrainingWeek.Summarize(fresh.Activities, fresh.Days, reportToday);
-            var weekly = await coach.GenerateWeeklyReviewAsync(fresh.Coaching, prevWeek, fresh.Days);
+            var weekly = await coach.GenerateWeeklyReviewAsync(fresh.Coaching, prevWeek, fresh.Days, fresh.RecentLongRunPacing);
             if (weekly is not null)
             {
                 fresh.WeeklyInsight = weekly;
@@ -92,7 +92,7 @@ try
                 // Diagnostic-only fact check: this runs fully unattended every week, so at minimum
                 // leave a trail if the LLM invents a number not grounded in what it was actually
                 // given — never blocks publication (a naive checker has real false-positive risk).
-                var unverified = WeeklyReviewFactCheck.FindUnverifiedNumbers(weekly, prevWeek, fresh.Coaching, fresh.Days);
+                var unverified = WeeklyReviewFactCheck.FindUnverifiedNumbers(weekly, prevWeek, fresh.Coaching, fresh.Days, fresh.RecentLongRunPacing);
                 if (unverified.Count > 0)
                     Console.Error.WriteLine($"[garmin-report] Weekly review contains number(s) not matching known facts (possible hallucination, published anyway): {string.Join(", ", unverified)}");
             }

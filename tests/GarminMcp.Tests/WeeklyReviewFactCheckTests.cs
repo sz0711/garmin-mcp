@@ -135,4 +135,40 @@ public class WeeklyReviewFactCheckTests
 
         Assert.Contains("121", unverified);
     }
+
+    [Fact]
+    public void FindUnverifiedNumbers_MatchesPacingDistance()
+    {
+        var pacing = new PacingAnalysis { ActivityDate = "2026-06-28", DistanceKm = 18.3, Verdict = SplitVerdict.Positive, PercentDifference = 6.2 };
+        var text = "Dein Longrun über 18,3 km war ein Positive Split mit 6,2% Unterschied zwischen den Hälften.";
+
+        var unverified = WeeklyReviewFactCheck.FindUnverifiedNumbers(text, Week, null, null, pacing);
+
+        Assert.Empty(unverified);
+    }
+
+    [Fact]
+    public void FindUnverifiedNumbers_FlagsInventedPacingDistance_WhenNoPacingGiven()
+    {
+        // Without a pacing analysis passed in, a distance the prompt never sent must still be flagged.
+        var text = "Dein Longrun über 18,3 km war stark.";
+
+        var unverified = WeeklyReviewFactCheck.FindUnverifiedNumbers(text, Week, null);
+
+        Assert.Contains("18,3", unverified);
+    }
+
+    [Fact]
+    public void FindUnverifiedNumbers_DoesNotFlagTheSplitVerdictLabel()
+    {
+        // LlmCoach.BuildWeeklyPrompt's verdict labels deliberately say "zweite Hälfte", not "2.
+        // Hälfte" -- a bare ordinal digit there would survive the date/percent filters as a spurious
+        // plain number whenever the LLM echoes the exact phrasing it was given (which it's asked to).
+        var pacing = new PacingAnalysis { ActivityDate = "2026-06-28", DistanceKm = 18.3, Verdict = SplitVerdict.Positive, PercentDifference = 6.2 };
+        var text = "Dein Longrun über 18,3 km war ein Positive Split/Fade (zweite Hälfte langsamer als die erste), mit 6,2% Unterschied.";
+
+        var unverified = WeeklyReviewFactCheck.FindUnverifiedNumbers(text, Week, null, null, pacing);
+
+        Assert.Empty(unverified);
+    }
 }
