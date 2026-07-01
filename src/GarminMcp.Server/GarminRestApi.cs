@@ -32,6 +32,7 @@ public static class GarminRestApi
         api.MapGet("/activities-by-date", (IGarminService g, string startDate, string endDate, string? activityType, CancellationToken ct) => g.GetActivitiesByDateAsync(startDate, endDate, activityType, ct));
         api.MapGet("/activities/{activityId:long}", (IGarminService g, long activityId, CancellationToken ct) => g.GetActivityDetailsAsync(activityId, ct));
         api.MapGet("/personal-records", (IGarminService g, CancellationToken ct) => g.GetPersonalRecordsAsync(ct));
+        api.MapGet("/gear", (IGarminService g, CancellationToken ct) => g.GetUserGearsAsync(ct));
 
         // Coaching. "Today" is resolved via LocalDate.Today() (timezone-aware, see LocalDate.cs) —
         // not DateTime.Today — so the REST surface agrees with the MCP tools on which calendar day

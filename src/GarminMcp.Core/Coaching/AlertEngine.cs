@@ -253,6 +253,14 @@ public static class AlertEngine
             if (easyRuns.Count >= 4)
             {
                 checksRun++;
+                // Raw pace, not grade-adjusted: tooFastThreshold below is never grade-adjusted (it
+                // comes from the race-time formula or the zone's own low bound), so grade-adjusting
+                // only this side would create a basis mismatch — ordinary route elevation (not just
+                // steep terrain) could then make a genuinely well-paced easy run look "too fast"
+                // purely from the correction, the opposite of what this check is for. Confirmed via
+                // adversarial review; a proper fix would need the threshold itself to be
+                // elevation-aware too, which isn't done here — see RunningEconomy.cs's EfficiencyFactor
+                // for where grade adjustment is used safely (no fixed-threshold comparison involved).
                 double Pace(ActivitySummary a) => a.DurationMin!.Value * 60.0 / a.DistanceKm!.Value;
                 // The zone's own low bound can itself be dragged faster by a chronic overpacing habit
                 // (it's partly derived FROM these same recent runs' paces) — comparing against it alone

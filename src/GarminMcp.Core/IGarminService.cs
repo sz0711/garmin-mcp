@@ -60,4 +60,11 @@ public interface IGarminService
 
     /// <summary>Full structure of a workout (segments/steps/targets) by its id.</summary>
     Task<GarminWorkout> GetWorkoutAsync(long workoutId, CancellationToken cancellationToken = default);
+
+    /// <summary>The user's registered gear (shoes, bikes, etc.) as Garmin returns it — metadata
+    /// (make/model/type, registration/retirement dates) plus <c>MaximumMeters</c>, which is the
+    /// user-configured "remind me after X km" wear threshold, NOT actual accumulated mileage. Garmin
+    /// exposes real cumulative distance per item only via a separate gear-stats endpoint this API
+    /// does not cover, so it is not available here.</summary>
+    Task<GarminGear[]> GetUserGearsAsync(CancellationToken cancellationToken = default);
 }

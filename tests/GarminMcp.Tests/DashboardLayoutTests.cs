@@ -56,6 +56,60 @@ public class DashboardLayoutTests
     }
 
     [Fact]
+    public void Render_ShowsCoachingUnavailableNote_WhenCoachingFailedButDaysHaveData()
+    {
+        var report = new GarminReport
+        {
+            GeneratedAtUtc = DateTimeOffset.UnixEpoch,
+            Coaching = null,
+            CoachingUnavailable = true,
+            Days = new List<DayMetrics> { new() { Date = "2026-06-30", RestingHeartRate = 50, Steps = 8000 } },
+        };
+
+        var md = MarkdownRenderer.Render(report, showDays: 14);
+
+        Assert.Contains("Coaching-Daten heute nicht verfügbar", md);
+    }
+
+    [Fact]
+    public void Render_OmitsCoachingUnavailableNote_WhenCoachingIsNullWithoutAFailure()
+    {
+        // E.g. the very first report ever generated: not-enough-history-yet is a legitimate empty
+        // state, not a failure — CoachEngine.Evaluate itself never returns null, so ReportBuilder only
+        // sets CoachingUnavailable when its try/catch actually caught an exception.
+        var report = new GarminReport
+        {
+            GeneratedAtUtc = DateTimeOffset.UnixEpoch,
+            Coaching = null,
+            CoachingUnavailable = false,
+            Days = new List<DayMetrics> { new() { Date = "2026-06-30", RestingHeartRate = 50, Steps = 8000 } },
+        };
+
+        var md = MarkdownRenderer.Render(report, showDays: 14);
+
+        Assert.DoesNotContain("Coaching-Daten heute nicht verfügbar", md);
+    }
+
+    [Fact]
+    public void Render_OmitsCoachingUnavailableNote_WhenTotalOutage()
+    {
+        // No day data at all is already covered by the "Keine Daten" total-outage warning — a second,
+        // coaching-specific note would just be redundant noise on top of it.
+        var report = new GarminReport
+        {
+            GeneratedAtUtc = DateTimeOffset.UnixEpoch,
+            Coaching = null,
+            CoachingUnavailable = true,
+            Days = new List<DayMetrics>(),
+        };
+
+        var md = MarkdownRenderer.Render(report, showDays: 14);
+
+        Assert.DoesNotContain("Coaching-Daten heute nicht verfügbar", md);
+        Assert.Contains("Keine Daten", md);
+    }
+
+    [Fact]
     public void Render_IncludesNewSections_AndWritesSample()
     {
         var report = SampleReport();

@@ -145,6 +145,11 @@ public static class GarminTools
     public static Task<GarminPersonalRecord[]> GetPersonalRecords(IGarminService garmin, CancellationToken cancellationToken)
         => garmin.GetPersonalRecordsAsync(cancellationToken);
 
+    [McpServerTool(Name = "garmin_get_gear")]
+    [Description("Get the user's registered gear (running shoes, bikes, etc.): make/model/type, registration/retirement dates, and the user-configured 'remind me after X km' wear threshold (MaximumMeters). This is NOT actual accumulated mileage per item — Garmin's real cumulative-distance figure comes from a separate stats endpoint this API doesn't expose, so don't use MaximumMeters to judge how worn an item actually is.")]
+    public static Task<GarminGear[]> GetGear(IGarminService garmin, CancellationToken cancellationToken)
+        => garmin.GetUserGearsAsync(cancellationToken);
+
     // --- Coaching ---
 
     [McpServerTool(Name = "garmin_daily_coaching")]

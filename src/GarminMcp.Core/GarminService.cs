@@ -17,6 +17,7 @@ public sealed class GarminService : IGarminService
 
     private readonly Func<IGarminConnectClient> _clientResolver;
     private string? _displayName;
+    private long? _userId;
 
     /// <summary>Fixed client (used by tests and the simple/static case).</summary>
     public GarminService(IGarminConnectClient client) : this(() => client) { }
@@ -34,6 +35,7 @@ public sealed class GarminService : IGarminService
         {
             var profile = await Client.GetSocialProfile(cancellationToken);
             _displayName = profile.DisplayName;
+            _userId = profile.Id;
             return profile;
         }, "user profile");
 
@@ -116,6 +118,21 @@ public sealed class GarminService : IGarminService
 
     public Task<GarminWorkout> GetWorkoutAsync(long workoutId, CancellationToken cancellationToken = default) =>
         Guard(() => Client.GetWorkout(workoutId, cancellationToken), "workout");
+
+    public Task<GarminGear[]> GetUserGearsAsync(CancellationToken cancellationToken = default) =>
+        Guard(async () =>
+        {
+            // GarminSocialProfile.Id is assumed to be the identifier GetUserGears expects (not
+            // separately verified against a live account) — a wrong id degrades gracefully to an
+            // empty/error result via Guard's own exception handling, never a crash.
+            var userId = _userId ?? (await Client.GetSocialProfile(cancellationToken)).Id;
+            _userId = userId;
+            // The underlying client returns null (not an empty array) on HTTP 204 — a likely everyday
+            // response for most accounts, since gear tracking is opt-in and most people never set it
+            // up. Normalize here so callers never have to null-check on top of the empty-vs-absent
+            // distinction the rest of this interface doesn't otherwise have.
+            return await Client.GetUserGears(userId, cancellationToken) ?? Array.Empty<GarminGear>();
+        }, "gear");
 
     private static DateTime ParseDate(string date, string paramName)
     {

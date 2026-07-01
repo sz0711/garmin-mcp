@@ -34,6 +34,7 @@ public static class MarkdownRenderer
         }
 
         AppendStaleness(sb, report, today);
+        AppendCoachingUnavailable(sb, report);
         if (hero is null) AppendKpiBar(sb, report, days, today); // the hero card already shows the glance metrics
         AppendAlerts(sb, report.Alerts);
         AppendCoaching(sb, report);
@@ -109,6 +110,18 @@ public static class MarkdownRenderer
             sb.AppendLine($"> ⚠️ **Daten möglicherweise veraltet** — letzter Datenpunkt {latest:yyyy-MM-dd} (vor {gap} Tagen). Möglicher Sync-/Token-Fehler; prüfe die GitHub-Action.");
             sb.AppendLine();
         }
+    }
+
+    // ---- Coaching-subsystem failure (distinct from AppendStaleness's total-outage case) -----
+    private static void AppendCoachingUnavailable(StringBuilder sb, GarminReport report)
+    {
+        // Only a real fetch/compute failure sets this (see GarminReport.CoachingUnavailable) — never
+        // the legitimate early-history case. Skip when there's no day data at all: AppendStaleness's
+        // "Keine Daten" warning already covers a total outage, and the coach block being empty is then
+        // just a natural consequence, not new information.
+        if (!report.CoachingUnavailable || !report.Days.Any(d => d.HasAnyData)) return;
+        sb.AppendLine("> ⚠️ Coaching-Daten heute nicht verfügbar (evtl. Token-Problem — siehe Actions-Log).");
+        sb.AppendLine();
     }
 
     // ---- Early-warning system ------------------------------------------------
@@ -306,6 +319,7 @@ public static class MarkdownRenderer
         Row("🫀 Viszeralfett", t.VisceralFatRating, "", lowerBetter: null, "0");
         Row("🫁 VO₂max", t.Vo2Max, "", lowerBetter: false, "0.0");
         Row("🏋️ Fitness (CTL)", t.FitnessCtl, "", lowerBetter: false, "0");
+        Row("⚙️ Effizienz-Faktor", t.EfficiencyFactor, "", lowerBetter: false, "0.00");
 
         if (t.MarathonPredictionSeconds is { } mp)
             rows.Add($"| ⏱️ Marathon-Prognose | {FormatTime((int)mp.Current)} | {TrendCellTime(mp.Current, mp.Past)} |");
@@ -377,6 +391,7 @@ public static class MarkdownRenderer
             sb.AppendLine($"| {b.Label} | **{b.Value}** | {b.Date ?? "–"} |");
         sb.AppendLine();
     }
+
 
     private static void AppendLatestDay(StringBuilder sb, List<DayMetrics> days)
     {

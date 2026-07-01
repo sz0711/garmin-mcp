@@ -105,6 +105,24 @@ public class TrainingTrendsTests
     }
 
     [Fact]
+    public void Compute_EfficiencyFactor_RisesWhenSameHrCoversMoreGroundFaster()
+    {
+        var report = BuildReport(_ => { });
+        // Current (last 14 days): 10 km / 50 min @ HR 140 -> speed 200 m/min -> EF ~1.43.
+        report.Activities.Add(new ActivitySummary { Id = 1, Date = Today.AddDays(-2).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 50, AverageHr = 140 });
+        report.Activities.Add(new ActivitySummary { Id = 2, Date = Today.AddDays(-5).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 50, AverageHr = 140 });
+        // Past (~4-5 weeks back): 10 km / 65 min @ HR 140 -> speed ~153.8 m/min -> EF ~1.10 (slower).
+        report.Activities.Add(new ActivitySummary { Id = 3, Date = Today.AddDays(-30).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 65, AverageHr = 140 });
+        report.Activities.Add(new ActivitySummary { Id = 4, Date = Today.AddDays(-35).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 65, AverageHr = 140 });
+
+        var trends = TrainingTrends.Compute(report, Today);
+
+        Assert.NotNull(trends.EfficiencyFactor);
+        Assert.NotNull(trends.EfficiencyFactor!.Past);
+        Assert.True(trends.EfficiencyFactor.Current > trends.EfficiencyFactor.Past);
+    }
+
+    [Fact]
     public void Compute_MatchesRenderedMarkdownTrendsTable()
     {
         // TrainingTrends.Compute must stay the single source of truth AppendTrends renders from —

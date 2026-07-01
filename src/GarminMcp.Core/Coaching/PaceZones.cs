@@ -94,15 +94,22 @@ public static class PaceCalculator
         return zones.Count == 0 ? null : new PaceZones { Zones = zones, MarathonPaceSecPerKm = mp, FormulaEasyLowSecPerKm = formulaEasyLow };
     }
 
-    /// <summary>Median pace (sec/km) of recent clearly-aerobic runs, or null if there isn't enough
-    /// evidence to trust it over the formula. Distance bounds exclude noise (very short strides/
-    /// warmups) and long runs (often paced slower than pure "easy" due to accumulated fatigue).
-    /// The HR threshold mirrors CoachEngine's own distance-dependent quality-session cutoff
+    /// <summary>Median grade-adjusted pace (sec/km) of recent clearly-aerobic runs, or null if there
+    /// isn't enough evidence to trust it over the formula. Distance bounds exclude noise (very short
+    /// strides/warmups) and long runs (often paced slower than pure "easy" due to accumulated
+    /// fatigue). The HR threshold mirrors CoachEngine's own distance-dependent quality-session cutoff
     /// (avgHr &gt;= 155, or &gt;= 150 once the run is 8 km or longer) so a run counts as "easy"
     /// evidence here exactly when CoachEngine itself would NOT call it a quality session. Also
     /// excludes runs with a meaningful anaerobic training effect: average HR lags/blends over a
     /// session, so a fartlek (surges + jog recoveries) or a net-downhill run can average out to a
-    /// low HR while still being paced faster than a genuine easy effort — HR alone can't catch that.</summary>
+    /// low HR while still being paced faster than a genuine easy effort — HR alone can't catch that.
+    /// Uses RAW pace, not grade-adjusted pace: this feeds a plausibility guard (see FromPredictions)
+    /// that compares the result against a never-grade-adjusted formula threshold. Grade-adjusting
+    /// only one side of that comparison would let ordinary route elevation — not just steep terrain —
+    /// systematically bias the guard, since grade adjustment always makes pace look faster
+    /// (adversarially reviewed and confirmed: a fix would require recalibrating the guard itself,
+    /// not just this method — safer to keep this raw and confine grade adjustment to the standalone
+    /// Efficiency Factor trend in TrainingTrends.cs, which doesn't interact with any fixed threshold).</summary>
     private static int? ObservedEasyPaceSecPerKm(IReadOnlyList<ActivitySummary>? activities, DateOnly? today)
     {
         if (activities is null || activities.Count == 0) return null;

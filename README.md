@@ -181,7 +181,9 @@ GET /api/garmin/training-trends
 `garmin_get_body_battery`, `garmin_get_hrv`, `garmin_get_body_composition`,
 `garmin_get_weight`, `garmin_get_hydration`, `garmin_get_activities`,
 `garmin_get_activities_by_date`, `garmin_get_activity_details`,
-`garmin_get_personal_records`. Dates use the `yyyy-MM-dd` format.
+`garmin_get_personal_records`, `garmin_get_gear` (registered shoes/bikes — metadata and the
+user-configured wear-reminder threshold, not actual accumulated mileage). Dates use the
+`yyyy-MM-dd` format.
 
 **Coaching tools** (acts as a personal trainer): `garmin_daily_coaching` (readiness
 green/amber/red, recommended session rest/easy/moderate/hard, planned workout reconciled
@@ -190,8 +192,8 @@ with recovery, target pace zones, nutrition targets, next key workout),
 suppressed HRV, low blood oxygen (SpO2), training-load spikes, sleep debt, training monotony,
 illness pattern, running-economy/cadence and vertical-oscillation drift, easy-run pace
 discipline, taper load reduction), `garmin_training_trends` (current vs. ~4-weeks-ago for resting HR, HRV,
-sleep score, SpO2, weight/body composition, VO₂max, fitness (CTL) and marathon-time
-prediction — the same numbers the dashboard's trend digest shows), `garmin_training_readiness`,
+sleep score, SpO2, weight/body composition, VO₂max, fitness (CTL), efficiency factor and
+marathon-time prediction — the same numbers the dashboard's trend digest shows), `garmin_training_readiness`,
 `garmin_training_status` (VO₂max, ACWR/load), `garmin_race_predictions`,
 `garmin_scheduled_workouts` (marathon plan).
 

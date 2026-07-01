@@ -88,6 +88,13 @@ try
             {
                 fresh.WeeklyInsight = weekly;
                 fresh.WeeklyInsightWeekStart = weekStart;
+
+                // Diagnostic-only fact check: this runs fully unattended every week, so at minimum
+                // leave a trail if the LLM invents a number not grounded in what it was actually
+                // given — never blocks publication (a naive checker has real false-positive risk).
+                var unverified = WeeklyReviewFactCheck.FindUnverifiedNumbers(weekly, prevWeek, fresh.Coaching, fresh.Days);
+                if (unverified.Count > 0)
+                    Console.Error.WriteLine($"[garmin-report] Weekly review contains number(s) not matching known facts (possible hallucination, published anyway): {string.Join(", ", unverified)}");
             }
             Console.Error.WriteLine(weekly is null
                 ? "[garmin-report] Weekly review unavailable (will retry next run)."
@@ -104,6 +111,17 @@ try
 
     var withData = merged.Days.Count(d => d.HasAnyData);
     Console.Error.WriteLine($"[garmin-report] OK — {merged.Days.Count} day(s) in store ({withData} with data), {merged.Activities.Count} activities, {charts.Count} charts. Wrote data.json, dashboard.md, charts/ to {Path.GetFullPath(outDir)}");
+
+    // Coaching is best-effort (ReportBuilder never aborts the whole report over it), so this
+    // process still exits 0 even when the ENTIRE coach block silently failed — the existing
+    // GitHub Actions "Notify on failure" step (gated on the step actually failing) would never
+    // catch that. withData >= 3 rules out the one legitimate case Coaching is expected to be null:
+    // the very first report ever generated, before any real history exists. Anything else means
+    // ReportBuilder's coaching try/catch actually caught an exception (see the error logged above),
+    // almost always an expired/revoked GARMIN_TOKEN.
+    if (merged.Coaching is null && withData >= 3)
+        Console.Error.WriteLine("[garmin-report] COACHING_UNAVAILABLE_MARKER: coaching failed this run despite real day data — see the ReportBuilder error above (likely GARMIN_TOKEN expired/revoked).");
+
     return 0;
 }
 catch (GarminServiceException ex)

@@ -82,11 +82,17 @@ public sealed class PersonalBest
     public int Order { get; set; }             // display order
 }
 
+
 /// <summary>The accumulated dashboard data store (persisted as data.json).</summary>
 public sealed class GarminReport
 {
     public DateTimeOffset GeneratedAtUtc { get; set; }
     public DailyCoaching? Coaching { get; set; }
+    /// <summary>True only when ReportBuilder's coaching try/catch actually caught an exception (e.g.
+    /// expired/revoked token) — CoachEngine.Evaluate itself never returns null, so this never fires
+    /// for the legitimate "not enough history yet" case. Lets MarkdownRenderer show a user-visible
+    /// note instead of silently omitting the whole coach block.</summary>
+    public bool CoachingUnavailable { get; set; }
     public string? CoachInsight { get; set; }   // optional LLM-written daily note
     public string? WeeklyInsight { get; set; }  // optional LLM-written weekly review (refreshed weekly)
     public string? WeeklyInsightWeekStart { get; set; } // ISO Monday the weekly insight belongs to
@@ -151,6 +157,7 @@ public sealed class GarminReport
         {
             GeneratedAtUtc = fresh.GeneratedAtUtc,
             Coaching = fresh.Coaching,
+            CoachingUnavailable = fresh.CoachingUnavailable, // recomputed each run, like Alerts
             CoachInsight = fresh.CoachInsight,
             WeeklyInsight = fresh.WeeklyInsight ?? existing?.WeeklyInsight, // refreshed weekly, kept in between
             WeeklyInsightWeekStart = fresh.WeeklyInsight is not null ? fresh.WeeklyInsightWeekStart : existing?.WeeklyInsightWeekStart,

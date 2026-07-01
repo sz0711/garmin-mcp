@@ -263,6 +263,7 @@ public static class ReportBuilder
             // failing completely silently, which makes a real incident like this impossible to
             // root-cause after the fact.
             Console.Error.WriteLine($"[ReportBuilder] Coaching computation failed, leaving report.Coaching null: {ex}");
+            report.CoachingUnavailable = true;
         }
 
         try

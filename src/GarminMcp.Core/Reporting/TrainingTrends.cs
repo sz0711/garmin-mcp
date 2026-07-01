@@ -1,3 +1,5 @@
+using GarminMcp.Core.Coaching;
+
 namespace GarminMcp.Core.Reporting;
 
 /// <summary>A metric's current (last 7 days) value vs. its value ~4 weeks ago, for trend comparison.
@@ -23,6 +25,12 @@ public sealed class TrainingTrends
     public TrendPoint? Vo2Max { get; set; }
     public TrendPoint? FitnessCtl { get; set; }
     public TrendPoint? MarathonPredictionSeconds { get; set; }
+
+    /// <summary>Efficiency Factor (grade-adjusted speed per heartbeat) averaged over recent easy
+    /// runs vs. ~4 weeks ago — a VO2max-test-free aerobic-fitness signal that updates every run
+    /// instead of only when Garmin refreshes VO2max (see RunningEconomy.EfficiencyFactor). Rising =
+    /// improving aerobic fitness; falling can indicate fatigue/detraining.</summary>
+    public TrendPoint? EfficiencyFactor { get; set; }
 
     public static TrainingTrends Compute(GarminReport report, DateOnly today)
     {
@@ -70,6 +78,29 @@ public sealed class TrainingTrends
         var (mFirst, mLast) = MarkdownRenderer.FirstLast(report.Days, wStart, today, d => d.MarathonSeconds is int s ? s : (double?)null);
         var marathon = mLast is double ml ? new TrendPoint(ml, mFirst) : null;
 
+        // 14-day (not 7-day) windows: not every day has a qualifying easy run, so a narrower window
+        // risks too few samples to average meaningfully. Past window is offset far enough to stay
+        // non-overlapping with the current one.
+        var efCurStart = today.AddDays(-13); var efCurEnd = today;
+        var efPastStart = today.AddDays(-41); var efPastEnd = today.AddDays(-28);
+        double? AvgEf(DateOnly start, DateOnly end)
+        {
+            var efs = report.Activities
+                // Mirrors PaceCalculator.ObservedEasyPaceSecPerKm's "easy effort" filter (same
+                // distance/HR/anaerobic-effect criteria) so this trend reflects the same population
+                // of runs the pace-zone and easy-pace-discipline logic already treat as "easy".
+                .Where(a => a.IsRun && a.DistanceKm is >= 3 and <= 25 && a.DurationMin is > 0
+                            && a.AverageHr is int hr && hr > 0 && hr < (a.DistanceKm >= 8 ? 150 : 155)
+                            && !(a.AnaerobicEffect is double ae && ae >= 2.0)
+                            && DateOnly.TryParse(a.Date, out var ad) && ad >= start && ad <= end)
+                .Select(a => RunningEconomy.EfficiencyFactor(a.DistanceKm!.Value, a.DurationMin!.Value, a.AverageHr, a.ElevationGainM))
+                .Where(ef => ef.HasValue).Select(ef => ef!.Value)
+                .ToList();
+            return efs.Count > 0 ? efs.Average() : null;
+        }
+        var efCur = AvgEf(efCurStart, efCurEnd);
+        var ef = efCur is double efc ? new TrendPoint(Math.Round(efc, 3), AvgEf(efPastStart, efPastEnd)) : null;
+
         return new TrainingTrends
         {
             RestingHeartRate = AvgPointI(d => d.RestingHeartRate),
@@ -83,6 +114,7 @@ public sealed class TrainingTrends
             Vo2Max = vo2,
             FitnessCtl = ctl,
             MarathonPredictionSeconds = marathon,
+            EfficiencyFactor = ef,
         };
     }
 }
