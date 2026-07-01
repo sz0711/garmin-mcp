@@ -35,6 +35,27 @@ public class DashboardLayoutTests
     }
 
     [Fact]
+    public void TrainingWeek_DistanceAndLongestRun_ExcludeNonRunningActivities()
+    {
+        // A bike ride longer than any run must not inflate "🏃 Distanz" or masquerade as "Längster
+        // Lauf" — both labels explicitly promise running distance.
+        var today = new DateOnly(2026, 6, 30); // Tuesday
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-29", Type = "running", DistanceKm = 10 },
+            new() { Id = 2, Date = "2026-06-30", Type = "cycling", DistanceKm = 40 }, // longer than the run
+            new() { Id = 3, Date = "2026-06-29", Type = "walking", DistanceKm = 3 },
+        };
+
+        var (cur, _) = TrainingWeek.Summarize(activities, new List<DayMetrics>(), today);
+
+        Assert.Equal(10, cur.Km);         // running only — the 40 km ride is excluded
+        Assert.Equal(10, cur.LongestKm);  // the ride must not become "longest run"
+        Assert.Equal(3, cur.Sessions);    // session COUNT still covers all training modalities
+        Assert.Equal(3, cur.KmByType.Count); // the sport-type breakdown still shows everything
+    }
+
+    [Fact]
     public void Render_IncludesNewSections_AndWritesSample()
     {
         var report = SampleReport();

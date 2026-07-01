@@ -85,10 +85,15 @@ public static class TrainingPlanReader
         view.NextLongRun = fromToday.FirstOrDefault(p => p.Type == SessionType.Long);
         view.NextQuality = fromToday.FirstOrDefault(p => p.Type == SessionType.Quality);
 
-        var race = items.Values
-            .Where(i => i.IsRace)
+        // Prefer a marathon-distance entry over a nearer tune-up race (e.g. a half/10K scheduled
+        // 3-6 weeks out is a common real marathon-plan pattern) — this dashboard's taper/endurance
+        // coaching is marathon-specific, so attaching it to the wrong race would misinform.
+        var upcomingRaces = items.Values
+            .Where(i => i.IsRace && i.Date >= today)
             .OrderBy(i => i.Date.ToString("yyyy-MM-dd"), StringComparer.Ordinal)
-            .FirstOrDefault(i => i.Date >= today)
+            .ToList();
+        var race = upcomingRaces.FirstOrDefault(i => i.Distance is > 38000 and < 45000)
+            ?? upcomingRaces.FirstOrDefault()
             ?? items.Values.FirstOrDefault(i => i.IsRace);
         if (race is not null)
         {

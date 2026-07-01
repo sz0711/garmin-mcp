@@ -512,7 +512,7 @@ public static class PngCharts
             ("SCHLAF", latest?.SleepHours is double sh ? $"{sh:0.0}h" : "–"),
             ("BODY BATT.", latest?.BodyBatteryHigh is int bb ? $"{bb}" : "–"),
             ("FORM", c?.Tsb is double tsb ? tsb.ToString("+0;-0;0") : "–"),
-            ("KM/WOCHE", cur.Km > 0 ? cur.Km.ToString("0.#") : "–"),
+            ("LAUF-KM/WO", cur.Km > 0 ? cur.Km.ToString("0.#") : "–"), // running only — see typesplit chart for other sports
         };
         const float gx = 300, gy = 66, gh = 150;
         var gw = w - 28 - gx;
@@ -669,7 +669,9 @@ public static class PngCharts
         var byWeek = new Dictionary<int, double>();
         foreach (var a in activities)
         {
-            if (a.DistanceKm is not double km || km <= 0) continue;
+            // Running-only: the caption ("Wöchentliche Laufkilometer") and chart title both promise
+            // running distance specifically — a bike ride or hike must not inflate this number.
+            if (!a.IsRun || a.DistanceKm is not double km || km <= 0) continue;
             if (!DateOnly.TryParseExact(a.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) continue;
             var dt = d.ToDateTime(TimeOnly.MinValue);
             var key = ISOWeek.GetYear(dt) * 100 + ISOWeek.GetWeekOfYear(dt);

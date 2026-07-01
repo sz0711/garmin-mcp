@@ -143,6 +143,7 @@ public sealed class LlmCoach
         if (c.NextLongRun is not null) sb.AppendLine($"Nächster Longrun: {c.NextLongRun.Date} ({c.NextLongRun.Title ?? "Long Run"}).");
         if (c.NextQuality is not null) sb.AppendLine($"Nächste harte Einheit: {c.NextQuality.Date} ({c.NextQuality.Title ?? "Quality"}).");
         if (c.RaceDate is not null) sb.AppendLine($"Zielrennen: {c.RaceDate}{(c.DaysToRace is int d ? $" (in {d} Tagen)" : "")}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $", Ziel {c.Goal}")}.");
+        if (!string.IsNullOrWhiteSpace(c.EnduranceCaveat)) sb.AppendLine($"Vorbehalt zur Marathon-Prognose: {c.EnduranceCaveat}");
         return sb.ToString();
     }
 
@@ -220,6 +221,8 @@ public sealed class LlmCoach
         if (!string.IsNullOrWhiteSpace(c.Goal)) sb.AppendLine($"Zielzeit: {c.Goal}");
         if (c.OnTrackForGoal is bool ot)
             sb.AppendLine($"Zielabgleich: Marathon-Prognose ist {(ot ? "auf Kurs (schneller als Ziel)" : "noch über der Zielzeit")}{(c.GoalGapSeconds is int g ? $", Differenz {(g <= 0 ? "-" : "+")}{Math.Abs(g) / 60} min" : "")}.");
+        if (!string.IsNullOrWhiteSpace(c.EnduranceCaveat))
+            sb.AppendLine($"Wichtiger Vorbehalt zur Prognose: {c.EnduranceCaveat} Erwähne das, wenn du die Prognose/den Zielabgleich ansprichst — verkaufe \"auf Kurs\" nicht als ausdauerseitig bestätigt, wenn das nicht zutrifft.");
         if (c.TaperNote is not null) sb.AppendLine($"Taper-Kontext: {c.TaperNote}");
         if (c.Nutrition is { } n)
             sb.AppendLine($"Makro-Ziel heute ({n.DayType}): ~{n.CalorieTarget} kcal — Kohlenhydrate {n.CarbsG} g, Eiweiß {n.ProteinG} g, Fett {n.FatG} g{(n.WeightKg is double w ? $" (Gewicht {w} kg)" : "")}.");

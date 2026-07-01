@@ -63,6 +63,12 @@ public sealed class DailyCoaching
     // Training pace bands derived from race predictions.
     public PaceZones? Paces { get; set; }
     public string? TodayTargetPace { get; set; }
+
+    // Endurance reality check for the marathon-prediction goal verdict (see Evaluate for the
+    // sports-science rationale): a VO2max/tempo-based prediction can look "on track" long before
+    // the long run needed for 42.2 km has actually been built.
+    public double? LongestRunKm { get; set; }
+    public string? EnduranceCaveat { get; set; }
 }
 
 /// <summary>
@@ -236,6 +242,35 @@ public static class CoachEngine
             onTrack = pms <= gs;
         }
 
+        // --- Endurance reality check: Garmin's marathon prediction is VO2max/tempo-based and knows
+        // nothing about whether the long run needed for 42.2 km has actually been built. Look across
+        // a ~10-week block (not just this week) so a taper/deload week never hides a real long-run
+        // base — a single week's longest run would falsely trigger this on every taper week. ---
+        double? longestRunKm = null;
+        if (activities is not null)
+        {
+            var lookback = today.AddDays(-70);
+            var runs = activities
+                .Where(a => a.IsRun && a.DistanceKm is > 0 && DateOnly.TryParse(a.Date, out var ad) && ad >= lookback && ad <= today)
+                .Select(a => a.DistanceKm!.Value)
+                .ToList();
+            if (runs.Count > 0) longestRunKm = runs.Max();
+        }
+        string? enduranceCaveat = null;
+        if (race?.MarathonSeconds is not null && longestRunKm is double lr && lr < 29)
+        {
+            // Once in taper (<=21 days out) it's too late to safely build a longer run — doing so
+            // would blow the taper and add injury/glycogen-depletion risk with no time to recover
+            // before race day. Keep the caveat purely informational then; only recommend building the
+            // long run further out, when there's still time to safely act on it.
+            var inTaper = plan.DaysToRace is int dtr2 && dtr2 <= 21;
+            enduranceCaveat = inTaper
+                ? $"Die Prognose beruht auf Tempo-/VO₂max-Daten, nicht auf einem bestätigten langen Lauf nahe Marathon-Distanz (bisher längster Lauf: {lr:0.#} km). Dafür ist es jetzt zu spät — keinen längeren Lauf mehr nachholen, sondern dem Taper vertrauen und im Rennen eher konservativ starten."
+                : lr < 20
+                    ? $"Die Prognose basiert auf Tempo-/VO₂max-Daten, nicht auf einem langen Lauf nahe Marathon-Distanz (bisher längster Lauf: {lr:0.#} km) — für 42,2 km ist die Ausdauerbasis noch nicht bestätigt. Longrun schrittweise Richtung 29–32 km aufbauen."
+                    : $"Ausdauerbasis wächst (bisher längster Lauf {lr:0.#} km) — für eine verlässlichere Prognose hilft ein Longrun näher an 29–32 km.";
+        }
+
         return new DailyCoaching
         {
             Date = todayKey,
@@ -267,6 +302,8 @@ public static class CoachEngine
             CompletedToday = completedToday,
             Paces = paces,
             TodayTargetPace = todayTarget,
+            LongestRunKm = longestRunKm,
+            EnduranceCaveat = enduranceCaveat,
         };
     }
 

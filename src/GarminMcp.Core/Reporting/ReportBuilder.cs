@@ -216,7 +216,10 @@ public static class ReportBuilder
                 coaching.DoneThisWeek = report.Activities.Count(a => InWeek(a.Date, weekStart, weekEnd));
                 var plannedKm = plan.AllPlanned.Where(p => p.Type != SessionType.Rest && InWeek(p.Date, weekStart, weekEnd)).Sum(p => p.DistanceKm ?? 0);
                 if (plannedKm > 0) coaching.PlannedKmThisWeek = Math.Round(plannedKm, 1);
-                coaching.DoneKmThisWeek = Math.Round(report.Activities.Where(a => InWeek(a.Date, weekStart, weekEnd)).Sum(a => a.DistanceKm ?? 0), 1);
+                // Running-only, matching TrainingWeek.Build and the planned-km side (a plan's DistanceKm
+                // is effectively running distance) — a bike/hike day must not make a running plan look
+                // fulfilled.
+                coaching.DoneKmThisWeek = Math.Round(report.Activities.Where(a => a.IsRun && InWeek(a.Date, weekStart, weekEnd)).Sum(a => a.DistanceKm ?? 0), 1);
 
                 // Last completed week (for the weekly review).
                 var lastStart = weekStart.AddDays(-7);
@@ -225,7 +228,7 @@ public static class ReportBuilder
                 coaching.DoneLastWeek = report.Activities.Count(a => InWeek(a.Date, lastStart, lastEnd));
                 var plannedKmLast = plan.AllPlanned.Where(p => p.Type != SessionType.Rest && InWeek(p.Date, lastStart, lastEnd)).Sum(p => p.DistanceKm ?? 0);
                 if (plannedKmLast > 0) coaching.PlannedKmLastWeek = Math.Round(plannedKmLast, 1);
-                coaching.DoneKmLastWeek = Math.Round(report.Activities.Where(a => InWeek(a.Date, lastStart, lastEnd)).Sum(a => a.DistanceKm ?? 0), 1);
+                coaching.DoneKmLastWeek = Math.Round(report.Activities.Where(a => a.IsRun && InWeek(a.Date, lastStart, lastEnd)).Sum(a => a.DistanceKm ?? 0), 1);
 
                 var bedtimes = report.Days
                     .Where(d => d.BedtimeHour.HasValue)

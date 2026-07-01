@@ -56,6 +56,11 @@ public sealed class ActivitySummary
     public int? Calories { get; set; }
     public int? AverageHr { get; set; }
 
+    /// <summary>Whether Garmin classifies this as a running activity (incl. treadmill/trail/track).
+    /// Single source of truth for "is this a run" so weekly running-distance metrics don't silently
+    /// include walks, rides or hikes.</summary>
+    public bool IsRun => (Type ?? "").Contains("run", StringComparison.OrdinalIgnoreCase);
+
     // Running dynamics (only populated for running-type activities on a compatible device).
     public double? CadenceSpm { get; set; }            // average run cadence, steps/min
     public double? GroundContactTimeMs { get; set; }   // average ground contact time, ms

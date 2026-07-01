@@ -151,6 +151,7 @@ public static class MarkdownRenderer
             line += GoalVerdict(c);
             sb.AppendLine(line);
         }
+        if (!string.IsNullOrWhiteSpace(c.EnduranceCaveat)) sb.AppendLine($"- 🏃 {c.EnduranceCaveat}");
         if (c.TaperNote is not null) sb.AppendLine($"- ⏳ {c.TaperNote}");
         if (c.NextQuality is not null) sb.AppendLine($"- ⚡ Nächste Schärfe: {c.NextQuality.Date} ({DescribePlan(c.NextQuality)})");
         sb.AppendLine();
@@ -453,7 +454,9 @@ public static class MarkdownRenderer
             var split = string.Join(" · ", cur.KmByType
                 .OrderByDescending(kv => kv.Value)
                 .Select(kv => $"{SportDe(kv.Key)} {kv.Value:0.#} km"));
-            sb.AppendLine($"Aufteilung: {split}");
+            // Deliberately NOT running-only (unlike "🏃 Distanz" above) — this is the full cross-training
+            // picture, so the sum can legitimately exceed the running-only distance row.
+            sb.AppendLine($"Trainingsumfang nach Sportart (alle Aktivitäten): {split}");
             sb.AppendLine();
         }
     }
@@ -657,6 +660,10 @@ public static class MarkdownRenderer
         {
             sb.AppendLine($"- 🏁 Marathon-Prognose {FormatTime(ms2)}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $" · Ziel {c.Goal}")}{GoalVerdict(c)}");
         }
+        // Same suppression as above: only shown here when Race-Countdown (which carries its own copy)
+        // won't render — never duplicated, never shown for a race that has already happened.
+        if (!isPastRace && !raceCountdownWillShow && !string.IsNullOrWhiteSpace(c.EnduranceCaveat))
+            sb.AppendLine($"- 🏃 {c.EnduranceCaveat}");
 
         if (c.TaperNote is not null) sb.AppendLine($"- ⏳ {c.TaperNote}");
 

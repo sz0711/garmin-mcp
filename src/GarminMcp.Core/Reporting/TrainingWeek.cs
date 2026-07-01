@@ -2,7 +2,10 @@ using System.Globalization;
 
 namespace GarminMcp.Core.Reporting;
 
-/// <summary>Aggregated training for a calendar week (Mon–Sun).</summary>
+/// <summary>Aggregated training for a calendar week (Mon–Sun). <see cref="Km"/> and
+/// <see cref="LongestKm"/> are RUNNING distance only (every consumer labels them "🏃 Distanz" /
+/// "Längster Lauf") — a long bike ride or hike no longer masquerades as a run. Session count,
+/// time and elevation stay cross-training totals, matching their generic (non-run-specific) labels.</summary>
 public sealed class WeeklyStats
 {
     public double Km { get; set; }
@@ -42,10 +45,13 @@ public static class TrainingWeek
 
             stats.Sessions++;
             var km = a.DistanceKm ?? 0;
-            stats.Km += km;
+            if (a.IsRun)
+            {
+                stats.Km += km;
+                if (km > stats.LongestKm) stats.LongestKm = km;
+            }
             stats.Hours += (a.DurationMin ?? 0) / 60.0;
             stats.ElevationM += a.ElevationGainM ?? 0;
-            if (km > stats.LongestKm) stats.LongestKm = km;
             var type = string.IsNullOrWhiteSpace(a.Type) ? "andere" : a.Type!;
             stats.KmByType[type] = stats.KmByType.GetValueOrDefault(type) + km;
         }

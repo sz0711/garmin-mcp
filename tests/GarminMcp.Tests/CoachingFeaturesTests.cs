@@ -110,6 +110,127 @@ public class CoachingFeaturesTests
     }
 
     [Fact]
+    public void Coach_FlagsStrongEnduranceCaveat_WhenLongestRunFarBelowMarathonDistance()
+    {
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30" } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-25", Type = "running", DistanceKm = 12 }, // nowhere near 42.2 km
+        };
+
+        var c = CoachEngine.Evaluate(Today, days, null, null, new TrainingPlanView(),
+            new RacePrediction { MarathonSeconds = 13500 }, activities: activities);
+
+        Assert.Equal(12, c.LongestRunKm);
+        Assert.NotNull(c.EnduranceCaveat);
+        Assert.Contains("Ausdauerbasis noch nicht bestätigt", c.EnduranceCaveat);
+    }
+
+    [Fact]
+    public void Coach_FlagsMildEnduranceCaveat_WhenLongestRunModerate()
+    {
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30" } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-25", Type = "running", DistanceKm = 24 },
+        };
+
+        var c = CoachEngine.Evaluate(Today, days, null, null, new TrainingPlanView(),
+            new RacePrediction { MarathonSeconds = 13500 }, activities: activities);
+
+        Assert.Equal(24, c.LongestRunKm);
+        Assert.NotNull(c.EnduranceCaveat);
+        Assert.Contains("Ausdauerbasis wächst", c.EnduranceCaveat);
+    }
+
+    [Fact]
+    public void Coach_NoEnduranceCaveat_WhenLongRunAlreadyBuilt()
+    {
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30" } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-25", Type = "running", DistanceKm = 30 },
+        };
+
+        var c = CoachEngine.Evaluate(Today, days, null, null, new TrainingPlanView(),
+            new RacePrediction { MarathonSeconds = 13500 }, activities: activities);
+
+        Assert.Equal(30, c.LongestRunKm);
+        Assert.Null(c.EnduranceCaveat);
+    }
+
+    [Fact]
+    public void Coach_EnduranceCaveat_LooksAcrossTenWeeks_NotJustTaperWeek()
+    {
+        // A 32 km long run 9 weeks ago must still count even though this week (taper) only had a
+        // short shakeout run — a single-week lookback would falsely flag a well-prepared athlete.
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30" } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = Today.AddDays(-63).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 32 },
+            new() { Id = 2, Date = "2026-06-29", Type = "running", DistanceKm = 5 }, // this week's taper shakeout
+        };
+
+        var c = CoachEngine.Evaluate(Today, days, null, null, new TrainingPlanView(),
+            new RacePrediction { MarathonSeconds = 13500 }, activities: activities);
+
+        Assert.Equal(32, c.LongestRunKm);
+        Assert.Null(c.EnduranceCaveat);
+    }
+
+    [Fact]
+    public void Coach_EnduranceCaveat_DoesNotRecommendBuildingLongRun_DuringTaper()
+    {
+        // Recommending a new near-marathon-distance long run during taper is sports-science-wrong
+        // (blown taper, no time to recover before race day) — the caveat must switch to a purely
+        // informational, taper-respecting framing instead of the "build toward 29-32 km" instruction.
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30" } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-25", Type = "running", DistanceKm = 12 }, // would normally trigger the strong caveat
+        };
+        var plan = new TrainingPlanView { DaysToRace = 10 }; // inside the 21-day taper window
+
+        var c = CoachEngine.Evaluate(Today, days, null, null, plan,
+            new RacePrediction { MarathonSeconds = 13500 }, activities: activities);
+
+        Assert.NotNull(c.EnduranceCaveat);
+        Assert.DoesNotContain("aufbauen", c.EnduranceCaveat);
+        Assert.Contains("Taper", c.EnduranceCaveat);
+    }
+
+    [Fact]
+    public void Coach_EnduranceCaveat_RecommendsBuildingLongRun_WellBeforeTaper()
+    {
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30" } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-25", Type = "running", DistanceKm = 12 },
+        };
+        var plan = new TrainingPlanView { DaysToRace = 60 }; // well outside taper — still time to act
+
+        var c = CoachEngine.Evaluate(Today, days, null, null, plan,
+            new RacePrediction { MarathonSeconds = 13500 }, activities: activities);
+
+        Assert.NotNull(c.EnduranceCaveat);
+        Assert.Contains("aufbauen", c.EnduranceCaveat);
+    }
+
+    [Fact]
+    public void Coach_NoEnduranceCaveat_WhenNoRacePrediction()
+    {
+        var days = new List<DayMetrics> { new() { Date = "2026-06-30" } };
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = "2026-06-25", Type = "running", DistanceKm = 10 },
+        };
+
+        var c = CoachEngine.Evaluate(Today, days, null, null, new TrainingPlanView(), race: null, activities: activities);
+
+        Assert.Null(c.EnduranceCaveat); // nothing to caveat without a prediction to begin with
+    }
+
+    [Fact]
     public void AlertEngine_FlagsElevatedRestingHeartRate()
     {
         var days = new List<DayMetrics>();
