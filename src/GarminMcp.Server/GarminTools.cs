@@ -148,7 +148,7 @@ public static class GarminTools
     // --- Coaching ---
 
     [McpServerTool(Name = "garmin_daily_coaching")]
-    [Description("THE personal-trainer summary for today: readiness (green/amber/red), the recommended session (rest/easy/moderate/hard), the planned marathon-plan workout reconciled with recovery, training status/ACWR/VO2max, race prediction, and the next key workout. Use this to advise the user on what to train today and whether to rest.")]
+    [Description("THE personal-trainer summary for today: readiness (green/amber/red), the recommended session (rest/easy/moderate/hard), the planned marathon-plan workout reconciled with recovery, target pace zones (easy/marathon/threshold/interval), a daily nutrition target (calories + carb/protein/fat), training status/ACWR/VO2max, race prediction vs. goal, and the next key workout. Use this to advise the user on what to train today, whether to rest, what pace to run, and what to eat.")]
     public static async Task<object> GetDailyCoaching(IGarminConnectionProvider provider, CancellationToken cancellationToken)
     {
         if (!provider.IsAuthenticated)
@@ -160,7 +160,7 @@ public static class GarminTools
     }
 
     [McpServerTool(Name = "garmin_health_alerts")]
-    [Description("Early-warning health/training signals from multi-day trends: elevated resting heart rate, suppressed HRV, training-load spike (ACWR), accumulated sleep debt, training monotony and acute illness pattern. Returns an all-clear when nothing is flagged.")]
+    [Description("Early-warning health/training signals from multi-day trends: elevated resting heart rate, suppressed HRV, low blood oxygen (SpO2), training-load spike (ACWR), accumulated sleep debt, training monotony, acute illness pattern, declining running economy (cadence/vertical-oscillation drift at a similar pace), easy-run pace discipline (running 'easy' days too fast), and — in the 3-week taper window before a race — whether training load is actually being reduced. Returns an all-clear when nothing is flagged.")]
     public static async Task<object> GetHealthAlerts(IGarminConnectionProvider provider, CancellationToken cancellationToken)
     {
         if (!provider.IsAuthenticated)

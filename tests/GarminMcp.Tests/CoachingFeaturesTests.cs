@@ -697,4 +697,49 @@ public class CoachingFeaturesTests
 
         Assert.Contains(alerts, a => a.Title.Contains("Lockere Läufe"));
     }
+
+    [Fact]
+    public void AlertEngine_FlagsVerticalOscillationRise()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        // 3 most recent runs with noticeably higher vertical oscillation than the 6 before them,
+        // all at the same pace (8 km / 48 min = 6:00/km) so the pace-similarity gate doesn't suppress it.
+        for (var i = 0; i < 3; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", VerticalOscillationCm = 9.9, DistanceKm = 8, DurationMin = 48 });
+        for (var i = 3; i < 9; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", VerticalOscillationCm = 8.8, DistanceKm = 8, DurationMin = 48 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.Contains(alerts, a => a.Title.Contains("Vertikalbewegung"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoVerticalOscillationAlertWhenStable()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 9; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", VerticalOscillationCm = 8.9, DistanceKm = 8, DurationMin = 48 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Vertikalbewegung"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoVerticalOscillationAlertWhenPaceDiffers()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 3; i++) // tempo: 8 km / 36 min = 4:30/km
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", VerticalOscillationCm = 9.9, DistanceKm = 8, DurationMin = 36 });
+        for (var i = 3; i < 9; i++) // easy: 8 km / 48 min = 6:00/km
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", VerticalOscillationCm = 8.8, DistanceKm = 8, DurationMin = 48 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Vertikalbewegung"));
+    }
 }

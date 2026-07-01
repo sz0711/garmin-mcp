@@ -168,6 +168,44 @@ public static class AlertEngine
             }
         }
 
+        // --- Running-form trend: a sustained RISE in vertical oscillation at a similar pace signals
+        // a bouncier, less efficient stride — often fatigue-driven form breakdown (reduced push-off
+        // power compensated with more vertical bounce instead of horizontal propulsion). This tends to
+        // correlate with (not be independent of) the cadence check above — a fatigue-driven cadence
+        // drop at constant pace mechanically implies a longer stride, which often shows up as more
+        // vertical bounce too — so the two checks are best read as corroborating signals of the same
+        // underlying fatigue rather than two unrelated pieces of evidence. ---
+        if (activities is not null)
+        {
+            var voRuns = activities
+                .Where(a => a.VerticalOscillationCm.HasValue && a.DistanceKm is > 0 && a.DurationMin is > 0
+                            && DateOnly.TryParse(a.Date, out var ad) && ad <= today)
+                .OrderByDescending(a => a.Date, StringComparer.Ordinal)
+                .ToList();
+            var voRecentEnough = voRuns.Count > 0 && DateOnly.TryParse(voRuns[0].Date, out var lastVoRunDate)
+                && today.DayNumber - lastVoRunDate.DayNumber <= 14;
+            if (voRecentEnough && voRuns.Count >= 6) // 3 recent runs + at least 3 to form a real baseline
+            {
+                checksRun++;
+                var recentVoRuns = voRuns.Take(3).ToList();
+                var baseVoRuns = voRuns.Skip(3).Take(6).ToList();
+                var recentVo = recentVoRuns.Average(a => a.VerticalOscillationCm!.Value);
+                var baseVo = baseVoRuns.Average(a => a.VerticalOscillationCm!.Value);
+                double VoPaceSecPerKm(ActivitySummary a) => a.DurationMin!.Value * 60.0 / a.DistanceKm!.Value;
+                var recentVoPace = recentVoRuns.Average(VoPaceSecPerKm);
+                var baseVoPace = baseVoRuns.Average(VoPaceSecPerKm);
+                var voPaceSimilar = baseVoPace > 0 && Math.Abs(recentVoPace - baseVoPace) / baseVoPace <= 0.15;
+                var voRise = recentVo - baseVo;
+                var risePct = baseVo > 0 ? voRise / baseVo * 100.0 : 0;
+                // Relative-only would under-guard low-VO runners (10% of a ~6cm baseline is only
+                // ~0.6cm, close to typical sensor/day-to-day noise) — also require a minimum absolute
+                // rise, mirroring the cadence check's use of an absolute (not relative) spm threshold.
+                if (voPaceSimilar && risePct >= 10 && voRise >= 0.5)
+                    alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "🦵", Title = "Vertikalbewegung nimmt zu",
+                        Detail = $"Vertikale Oszillation der letzten 3 Läufe Ø {recentVo:0.0} cm, {risePct:0} % über dem Schnitt der {baseVoRuns.Count} Läufe davor (Ø {baseVo:0.0} cm) bei ähnlichem Tempo. Kann auf Ermüdung oder nachlassende Lauftechnik hindeuten – auf einen effizienten, bodennahen Laufstil achten oder Erholung priorisieren." });
+            }
+        }
+
         // --- Training monotony / strain (Foster): same load every day is risky ---
         if (activities is not null)
         {
