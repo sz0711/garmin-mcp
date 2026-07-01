@@ -208,8 +208,10 @@ public static class ReportBuilder
             var plan = await TrainingPlanReader.BuildAsync(service, today, cancellationToken);
             report.Coaching = CoachEngine.Evaluate(today, report.Days, readiness, status, plan, race, goal, weightKg, report.Activities);
 
-            // Early-warning system (multi-day trends across the accumulated history).
-            report.Alerts = AlertEngine.Evaluate(report.Days, status, today, report.Activities);
+            // Early-warning system (multi-day trends across the accumulated history). Reuses the
+            // pace zones + taper window CoachEngine already computed above, rather than recomputing.
+            report.Alerts = AlertEngine.Evaluate(report.Days, status, today, report.Activities,
+                report.Coaching?.DaysToRace, report.Coaching?.Paces);
 
             if (report.Coaching is { } coaching)
             {

@@ -31,7 +31,8 @@ public static class AlertEngine
 {
     public static List<HealthAlert> Evaluate(
         IReadOnlyList<DayMetrics> days, TrainingStatusInfo? status, DateOnly today,
-        IReadOnlyList<ActivitySummary>? activities = null)
+        IReadOnlyList<ActivitySummary>? activities = null,
+        int? daysToRace = null, PaceZones? paces = null)
     {
         var alerts = new List<HealthAlert>();
         var todayKey = today.ToString("yyyy-MM-dd");
@@ -191,6 +192,72 @@ public static class AlertEngine
                         alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "🪨", Title = "Hohe Trainingsmonotonie",
                             Detail = $"Monotonie {monotony:0.0} (Ziel <2,0): deine Tage ähneln sich zu sehr. Mehr Kontrast – klar harte und klar lockere Tage plus echte Ruhetage – senkt das Übertrainings-/Verletzungsrisiko." });
                 }
+            }
+        }
+
+        // --- Easy-run pace discipline: runs the athlete's own effort classification already treats
+        // as "easy" (low HR, same distance-dependent cutoff PaceCalculator uses to build the easy
+        // zone itself) but that were paced faster than the prescribed easy band. This is the common,
+        // hard-to-notice training error where HR looks fine but the legs never get the true recovery
+        // stimulus an easy day is for — moderate-intensity creep that erodes the hard/easy contrast. ---
+        if (activities is not null && paces?.ByKey("easy") is { } easyZone)
+        {
+            var easyRuns = activities
+                .Where(a => a.IsRun && a.DistanceKm is >= 3 and <= 25 && a.DurationMin is > 0
+                            && a.AverageHr is int hr && hr > 0 && hr < (a.DistanceKm >= 8 ? 150 : 155)
+                            && !(a.AnaerobicEffect is double ae && ae >= 2.0) // fartlek/net-downhill: HR can average low despite a fast pace
+                            && DateOnly.TryParse(a.Date, out var ad) && ad <= today && today.DayNumber - ad.DayNumber <= 14)
+                .OrderByDescending(a => a.Date, StringComparer.Ordinal)
+                .Take(4)
+                .ToList();
+            if (easyRuns.Count >= 4)
+            {
+                checksRun++;
+                double Pace(ActivitySummary a) => a.DurationMin!.Value * 60.0 / a.DistanceKm!.Value;
+                // The zone's own low bound can itself be dragged faster by a chronic overpacing habit
+                // (it's partly derived FROM these same recent runs' paces) — comparing against it alone
+                // would let sustained drift quietly raise its own bar and mask exactly the pattern this
+                // alert exists to catch. FormulaEasyLowSecPerKm is threshold-anchored and drift-immune;
+                // taking the slower (larger) of the two prevents that self-referential blind spot.
+                var tooFastThreshold = paces.FormulaEasyLowSecPerKm is int fl ? Math.Max(easyZone.LowSecPerKm, fl) : easyZone.LowSecPerKm;
+                var tooFast = easyRuns.Count(a => Pace(a) < tooFastThreshold);
+                if (tooFast >= 3)
+                    alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "🐇", Title = "Lockere Läufe oft zu schnell",
+                        Detail = $"{tooFast} von {easyRuns.Count} zuletzt lockeren Läufen (niedrige Herzfrequenz) waren schneller als {PaceZone.Fmt(tooFastThreshold)} — der untere Rand deiner Locker-Zone. Für echten Erholungsnutzen bewusst langsamer laufen, auch wenn es sich leicht anfühlt — sonst verschwimmt der Kontrast zu den harten Tagen." });
+            }
+        }
+
+        // --- Taper execution: is weekly load actually declining during the taper window? A common
+        // taper-anxiety mistake is quietly keeping (or even raising) volume out of fear of losing
+        // fitness — exactly what the taper is designed to prevent by trading a little fitness for a
+        // lot of freshness. Skip once inside the final few days (daysToRace &lt; 5): by then there's
+        // nothing meaningful left to reduce, and a week-over-week comparison would just be noise.
+        // The pre-taper baseline is the BEST (highest-load) of the three weeks before "this week", not
+        // just the single immediately-preceding one — a deliberate cutback/step-back week placed right
+        // before taper start would otherwise look like the peak and demand a reduction that's already
+        // been made (the same "don't let a single lighter week masquerade as the real baseline" idea
+        // CoachEngine's longest-run lookback already applies for the same reason). Also stays quiet
+        // when the existing ACWR check already reports low acute load as taper-appropriate — firing
+        // both would read as contradictory advice on the same report. ---
+        if (activities is not null && daysToRace is int dtr3 && dtr3 is >= 5 and <= 21
+            && !(acwr is double aLow && aLow < 0.8))
+        {
+            var loadByDay = new double[28];
+            foreach (var act in activities)
+            {
+                if (!DateOnly.TryParse(act.Date, out var ad)) continue;
+                var back = today.DayNumber - ad.DayNumber;
+                if (back is >= 0 and <= 27) loadByDay[back] += LoadModel.ActivityLoad(act);
+            }
+            var thisWeek = loadByDay.Take(7).Sum();
+            var preTaperPeak = new[] { loadByDay.Skip(7).Take(7).Sum(), loadByDay.Skip(14).Take(7).Sum(), loadByDay.Skip(21).Take(7).Sum() }.Max();
+            if (preTaperPeak >= 150) // only judge against a week with meaningful training to taper from
+            {
+                checksRun++;
+                var changePct = (thisWeek - preTaperPeak) / preTaperPeak * 100.0;
+                if (changePct > -5) // flat or rising vs. the real pre-taper peak, when it should be clearly declining
+                    alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "📉", Title = "Taper reduziert die Last noch nicht",
+                        Detail = $"Trainingslast diese Woche {changePct:+0;-0}% ggü. deiner Spitzenwoche vor dem Taper — in der Taper-Phase ({dtr3} Tage bis zum Rennen) sollte der Umfang spürbar sinken (üblich 20–40 % weniger pro Woche). Umfang jetzt bewusst zurücknehmen, damit du frisch statt übertrainiert an den Start gehst." });
             }
         }
 

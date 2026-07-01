@@ -523,4 +523,178 @@ public class CoachingFeaturesTests
 
         Assert.DoesNotContain(alerts, a => a.Title.Contains("Laufökonomie"));
     }
+
+    private static readonly PaceZones TestPaces = new()
+    {
+        Zones = { new PaceZone("Locker (GA1)", "easy", 400, 435) }, // 6:40/km - 7:15/km
+    };
+
+    [Fact]
+    public void AlertEngine_FlagsEasyRunsTooFast()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 4; i++)
+            // 10km in 60 min = 360 s/km (6:00/km) — faster than the easy zone's 400 s/km floor.
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 3).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, paces: TestPaces);
+
+        Assert.Contains(alerts, a => a.Title.Contains("Lockere Läufe"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoEasyPaceAlertWhenPacesAreAppropriate()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 4; i++)
+            // 10km in 68 min = 408 s/km — inside the 400-435 easy band.
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 3).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 10, DurationMin = 68, AverageHr = 140 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, paces: TestPaces);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Lockere Läufe"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoEasyPaceAlertWithTooFewQualifyingRuns()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 3; i++) // only 3 — below the 4-run evidence floor
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 3).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, paces: TestPaces);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Lockere Läufe"));
+    }
+
+    [Fact]
+    public void AlertEngine_FlagsTaperNotReducingLoad()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        // Same load both weeks (4x 60-min runs @ HR140 in each 7-day window) — taper isn't reducing anything.
+        int[] offsets = { 0, 2, 4, 6, 8, 10, 12, 13 };
+        for (var i = 0; i < offsets.Length; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-offsets[i]).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, daysToRace: 14);
+
+        Assert.Contains(alerts, a => a.Title.Contains("Taper"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoTaperAlertWhenLoadIsActuallyDeclining()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>
+        {
+            // Last week: substantial load.
+            new() { Id = 1, Date = Today.AddDays(-8).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            new() { Id = 2, Date = Today.AddDays(-10).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            new() { Id = 3, Date = Today.AddDays(-12).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            new() { Id = 4, Date = Today.AddDays(-13).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            // This week: much less — a real taper cut.
+            new() { Id = 5, Date = Today.ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 5, DurationMin = 30, AverageHr = 140 },
+        };
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, daysToRace: 14);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Taper"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoTaperAlertOutsideTaperWindow()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        int[] offsets = { 0, 2, 4, 6, 8, 10, 12, 13 };
+        for (var i = 0; i < offsets.Length; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-offsets[i]).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 });
+
+        // Same flat-load pattern as the "flags" test, but 40 days out — not taper season yet.
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, daysToRace: 40);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Taper"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoTaperAlertWhenAcwrAlreadyReportsReducedLoad()
+    {
+        // Same flat-load, would-otherwise-fire data as AlertEngine_FlagsTaperNotReducingLoad, but the
+        // existing ACWR check already says "load is falling, that's fine in taper" (Acwr < 0.8) — firing
+        // the taper alert too would read as directly contradictory advice in the same report.
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        int[] offsets = { 0, 2, 4, 6, 8, 10, 12, 13 };
+        for (var i = 0; i < offsets.Length; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-offsets[i]).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 });
+        var status = new TrainingStatusInfo { Acwr = 0.65 };
+
+        var alerts = AlertEngine.Evaluate(days, status, Today, acts, daysToRace: 14);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Taper reduziert"));
+    }
+
+    [Fact]
+    public void AlertEngine_TaperBaseline_UsesTrueUsPreTaperPeak_NotJustTheImmediatelyPrecedingWeek()
+    {
+        // A deliberate cutback week sits right before the taper starts (common in 3:1-style periodized
+        // plans). The immediately-preceding week (back 7-13) is therefore already light — comparing
+        // only against it would make an unremarkable taper week look like "no reduction happened" even
+        // though the true pre-taper peak (back 14-20) was cut hard already.
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>
+        {
+            // True pre-taper peak (back 14-20): substantial load.
+            new() { Id = 1, Date = Today.AddDays(-14).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            new() { Id = 2, Date = Today.AddDays(-16).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            new() { Id = 3, Date = Today.AddDays(-18).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            new() { Id = 4, Date = Today.AddDays(-20).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 140 },
+            // Deliberate cutback week (back 7-13): already light.
+            new() { Id = 5, Date = Today.AddDays(-8).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 6.67, DurationMin = 40, AverageHr = 140 },
+            new() { Id = 6, Date = Today.AddDays(-11).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 6.67, DurationMin = 40, AverageHr = 140 },
+            // This week: similar to the cutback week, meaningfully below the true peak.
+            new() { Id = 7, Date = Today.AddDays(-1).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 6.67, DurationMin = 40, AverageHr = 140 },
+            new() { Id = 8, Date = Today.AddDays(-4).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 6.67, DurationMin = 40, AverageHr = 140 },
+        };
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, daysToRace: 14);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Taper"));
+    }
+
+    [Fact]
+    public void AlertEngine_FlagsEasyRunsTooFast_EvenWhenChronicDriftHasShiftedTheZoneItself()
+    {
+        // The easy zone's own low bound is partly derived from the athlete's own recent easy-run
+        // paces (PaceCalculator's observed-pace preference) — so a long-standing habit of running
+        // "easy" days too fast can drag the zone's low bound fast enough to stop flagging itself.
+        // HalfMarathonSeconds=6300 -> threshold ~299 s/km -> formula-anchored easy floor ~349 s/km.
+        var race = new RacePrediction { HalfMarathonSeconds = 6300 };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 5; i++)
+            // 15km in 80 min = 320 s/km: passes the observed-pace plausibility guard (320 >= 299+10)
+            // and is FASTER than the formula floor (349), but not far enough below the zone's own
+            // (self-shifted) low bound of 305 for the OLD, undamped comparison to have caught it.
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 3).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 15, DurationMin = 80, AverageHr = 140 });
+
+        var paces = PaceCalculator.FromPredictions(race, acts, Today);
+        Assert.Equal(305, paces!.ByKey("easy")!.LowSecPerKm);   // the (drifted) zone low bound
+        Assert.Equal(349, paces.FormulaEasyLowSecPerKm);        // the stable, drift-independent floor
+
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts, paces: paces);
+
+        Assert.Contains(alerts, a => a.Title.Contains("Lockere Läufe"));
+    }
 }

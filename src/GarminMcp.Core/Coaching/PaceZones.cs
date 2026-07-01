@@ -21,6 +21,14 @@ public sealed class PaceZones
     public List<PaceZone> Zones { get; set; } = new();
     public int? MarathonPaceSecPerKm { get; set; }
 
+    // The formula-only (threshold-anchored) easy-zone floor, computed independent of any observed-
+    // pace data. Callers that need to judge whether a run was "too fast for easy" (e.g. AlertEngine)
+    // should use this rather than Zones["easy"].LowSecPerKm alone: the zone's actual low bound can be
+    // dragged faster by a chronic overpacing habit (since it's partly derived FROM the athlete's own
+    // recent easy-run paces), which would let sustained drift quietly raise its own bar and silently
+    // stop triggering exactly when the drift is most real. This floor never moves with that drift.
+    public int? FormulaEasyLowSecPerKm { get; set; }
+
     public PaceZone? ByKey(string key) => Zones.FirstOrDefault(z => z.Key == key);
 }
 
@@ -59,9 +67,12 @@ public static class PaceCalculator
         if (mp is null && threshold is null && interval is null) return null;
 
         var zones = new List<PaceZone>();
+        int? formulaEasyLow = null;
         if (threshold is int thrForEasy)
         {
             var observed = ObservedEasyPaceSecPerKm(recentActivities, today);
+            var formulaCenter = thrForEasy + 65;
+            formulaEasyLow = formulaCenter - 15;
             // Plausibility guard: GA1/easy must be meaningfully slower than threshold pace by
             // definition. A wrist-HR sensor can under-read on a genuinely hard effort (dropout/
             // cadence-lock artifacts), which — over enough runs to pass the sample-size floor —
@@ -69,7 +80,7 @@ public static class PaceCalculator
             // trust it once it's at least 10 s/km slower than threshold; a smaller-but-real gap
             // (the exact scenario this feature targets — an athlete whose easy pace sits closer to
             // threshold than the generic +65 formula assumes) still passes this guard.
-            var easyCenter = observed is int obs && obs >= thrForEasy + 10 ? obs : thrForEasy + 65;
+            var easyCenter = observed is int obs && obs >= thrForEasy + 10 ? obs : formulaCenter;
             zones.Add(new PaceZone("Locker (GA1)", "easy", easyCenter - 15, easyCenter + 20));
             zones.Add(new PaceZone("Erholung", "recovery", easyCenter + 20, easyCenter + 50));
         }
@@ -80,7 +91,7 @@ public static class PaceCalculator
         if (interval is int itv)
             zones.Add(new PaceZone("Intervall (VO₂max)", "interval", itv - 6, itv + 4));
 
-        return zones.Count == 0 ? null : new PaceZones { Zones = zones, MarathonPaceSecPerKm = mp };
+        return zones.Count == 0 ? null : new PaceZones { Zones = zones, MarathonPaceSecPerKm = mp, FormulaEasyLowSecPerKm = formulaEasyLow };
     }
 
     /// <summary>Median pace (sec/km) of recent clearly-aerobic runs, or null if there isn't enough
@@ -88,7 +99,10 @@ public static class PaceCalculator
     /// warmups) and long runs (often paced slower than pure "easy" due to accumulated fatigue).
     /// The HR threshold mirrors CoachEngine's own distance-dependent quality-session cutoff
     /// (avgHr &gt;= 155, or &gt;= 150 once the run is 8 km or longer) so a run counts as "easy"
-    /// evidence here exactly when CoachEngine itself would NOT call it a quality session.</summary>
+    /// evidence here exactly when CoachEngine itself would NOT call it a quality session. Also
+    /// excludes runs with a meaningful anaerobic training effect: average HR lags/blends over a
+    /// session, so a fartlek (surges + jog recoveries) or a net-downhill run can average out to a
+    /// low HR while still being paced faster than a genuine easy effort — HR alone can't catch that.</summary>
     private static int? ObservedEasyPaceSecPerKm(IReadOnlyList<ActivitySummary>? activities, DateOnly? today)
     {
         if (activities is null || activities.Count == 0) return null;
@@ -97,6 +111,7 @@ public static class PaceCalculator
         var paces = activities
             .Where(a => a.IsRun && a.DistanceKm is >= 3 and <= 25 && a.DurationMin is > 0
                         && a.AverageHr is int hr && hr > 0 && hr < (a.DistanceKm >= 8 ? 150 : 155)
+                        && !(a.AnaerobicEffect is double ae && ae >= 2.0)
                         && (cutoff is null || (DateOnly.TryParse(a.Date, out var ad) && ad >= cutoff && ad <= today)))
             .Select(a => a.DurationMin!.Value * 60.0 / a.DistanceKm!.Value)
             .OrderBy(p => p)
