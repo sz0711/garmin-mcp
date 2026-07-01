@@ -316,6 +316,24 @@ public static class MarkdownRenderer
             rows.Add($"| 🧬 Körperfett | {bf.ToString("0.0")} % | {TrendCell(bfCur, bfPast, null, v => v.ToString("0.0"))} |");
         }
 
+        // Neutral (lowerBetter: null) like weight/body-fat above: body-composition direction isn't
+        // unambiguously "good" or "bad" without knowing the athlete's actual goal, and pushing a
+        // health judgment here risks being overconfident (e.g. very low body fat can itself be a
+        // training-risk signal, not a win).
+        var mmCur = AvgRange(report.Days, rStart, rEnd, d => d.MuscleMassKg);
+        if (mmCur is double mm)
+        {
+            var mmPast = AvgRange(report.Days, pStart, pEnd, d => d.MuscleMassKg);
+            rows.Add($"| 💪 Muskelmasse | {mm.ToString("0.0")} kg | {TrendCell(mmCur, mmPast, null, v => v.ToString("0.0"))} |");
+        }
+
+        var vfCur = AvgRange(report.Days, rStart, rEnd, d => d.VisceralFatRating);
+        if (vfCur is double vf)
+        {
+            var vfPast = AvgRange(report.Days, pStart, pEnd, d => d.VisceralFatRating);
+            rows.Add($"| 🫀 Viszeralfett | {vf.ToString("0")} | {TrendCell(vfCur, vfPast, null, v => v.ToString("0"))} |");
+        }
+
         var (vF, vL) = FirstLast(report.Days, wStart, today, d => d.Vo2Max);
         if (vL is double vl)
             rows.Add($"| 🫁 VO₂max | {vl.ToString("0.0")} | {TrendCell(vL, vF, false, v => v.ToString("0.0"))} |");
@@ -616,27 +634,38 @@ public static class MarkdownRenderer
         if (c.NextQuality is not null)
             sb.AppendLine($"- ⚡ Nächste harte Einheit: {c.NextQuality.Date} ({DescribePlan(c.NextQuality)})");
 
+        // Status/form/adherence metrics move behind a fold: they're genuinely useful, but stacking
+        // them as top-level bullets buried the block's actual purpose (today's action) under status
+        // numbers that mostly duplicate the dedicated 📈 Trends / 🏋️ Form charts elsewhere. Nothing
+        // is removed — it's one tap away — the default view is just the actionable bullets.
         var statusBits = new List<string>();
         if (c.TrainingStatus is not null) statusBits.Add($"Status: {c.TrainingStatus}");
         if (c.Acwr is double acwr) statusBits.Add($"ACWR {acwr:0.0}");
         if (c.Vo2Max is double v) statusBits.Add($"VO₂max {v:0.0}");
-        if (statusBits.Count > 0) sb.AppendLine($"- 📈 {string.Join(" · ", statusBits)}");
 
         var formBits = new List<string>();
         if (c.Ctl is double ctl) formBits.Add($"Fitness {ctl:0}");
         if (c.Atl is double atl) formBits.Add($"Fatigue {atl:0}");
         if (c.Tsb is double tsb) formBits.Add($"Form {tsb:+0;-0;0} ({FormLabel(tsb)})");
-        if (formBits.Count > 0) sb.AppendLine($"- 🏋️ {string.Join(" · ", formBits)}");
 
-        if (c.PlannedThisWeek is int planned && planned > 0)
+        var adherenceLine = c.PlannedThisWeek is int planned && planned > 0
+            ? $"✅ Planerfüllung diese Woche: {c.DoneThisWeek ?? 0}/{planned} Einheiten{(c.PlannedKmThisWeek is double pkm && pkm > 0 ? $" · {c.DoneKmThisWeek ?? 0:0.#}/{pkm:0.#} km" : "")}"
+            : null;
+        var sleepConsistencyLine = c.SleepConsistencyMin is double scm ? $"🛏️ Schlaf-Konsistenz: ±{scm:0} min (Zubettgeh-Zeit)" : null;
+
+        if (statusBits.Count > 0 || formBits.Count > 0 || adherenceLine is not null || sleepConsistencyLine is not null)
         {
-            var km = c.PlannedKmThisWeek is double pkm && pkm > 0
-                ? $" · {c.DoneKmThisWeek ?? 0:0.#}/{pkm:0.#} km"
-                : "";
-            sb.AppendLine($"- ✅ Planerfüllung diese Woche: {c.DoneThisWeek ?? 0}/{planned} Einheiten{km}");
+            sb.AppendLine("<details>");
+            sb.AppendLine("<summary>📊 Details zu Status, Form &amp; Planerfüllung</summary>");
+            sb.AppendLine();
+            if (statusBits.Count > 0) sb.AppendLine($"- 📈 {string.Join(" · ", statusBits)}");
+            if (formBits.Count > 0) sb.AppendLine($"- 🏋️ {string.Join(" · ", formBits)}");
+            if (adherenceLine is not null) sb.AppendLine($"- {adherenceLine}");
+            if (sleepConsistencyLine is not null) sb.AppendLine($"- {sleepConsistencyLine}");
+            sb.AppendLine();
+            sb.AppendLine("</details>");
+            sb.AppendLine();
         }
-        if (c.SleepConsistencyMin is double scm)
-            sb.AppendLine($"- 🛏️ Schlaf-Konsistenz: ±{scm:0} min (Zubettgeh-Zeit)");
 
         // The marathon prognosis + goal verdict has a dedicated home (🏁 Race-Countdown when close to
         // race day AND a prediction is actually available that day, and usually the 📈 Trends digest

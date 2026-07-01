@@ -90,7 +90,12 @@ public class ReportingTests
         svc.GetBodyCompositionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new GarminBodyComposition
             {
-                DateWeightList = new[] { new GarminDateWeight { CalendarDate = new DateTime(2026, 6, 30), BodyFat = 14.8 } },
+                DateWeightList = new[] { new GarminDateWeight
+                {
+                    CalendarDate = new DateTime(2026, 6, 30), BodyFat = 14.8,
+                    MuscleMass = 32500, // grams, as Garmin's raw API typically reports it
+                    VisceralFat = 7,
+                } },
             });
 
         var report = await ReportBuilder.BuildAsync(svc, 1, today, DateTimeOffset.UnixEpoch);
@@ -108,6 +113,8 @@ public class ReportingTests
         Assert.Equal(91, d.SpO2Low);
         Assert.Equal(14.2, d.SleepRespirationRate);
         Assert.Equal(14.8, d.BodyFatPercent);
+        Assert.Equal(32.5, d.MuscleMassKg); // 32500 g -> kg
+        Assert.Equal(7, d.VisceralFatRating);
 
         Assert.Equal(2, report.Activities.Count);
         var run = report.Activities.Single(a => a.Id == 1);
@@ -126,6 +133,59 @@ public class ReportingTests
 
         var walk = report.Activities.Single(a => a.Id == 2);
         Assert.Null(walk.CadenceSpm); // running dynamics never populated for non-run activity types
+    }
+
+    [Theory]
+    [InlineData(30)]    // some accounts report muscle mass already in kg
+    [InlineData(30_000)] // others report it in grams (the ambiguity WeightKg already guards against)
+    public async Task Builder_MuscleMass_HandlesBothGramsAndKgUnits(long rawMuscleMass)
+    {
+        var today = new DateOnly(2026, 6, 30);
+        var svc = Substitute.For<IGarminService>();
+        StubMinimalBodyComposition(svc, today, muscleMass: rawMuscleMass, visceralFat: 5);
+
+        var report = await ReportBuilder.BuildAsync(svc, 1, today, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(30.0, Assert.Single(report.Days).MuscleMassKg);
+    }
+
+    [Theory]
+    [InlineData(5)]     // implausibly low for a human (even in kg)
+    [InlineData(500_000)] // implausibly high even as grams
+    public async Task Builder_MuscleMass_RejectsImplausibleValues(long rawMuscleMass)
+    {
+        var today = new DateOnly(2026, 6, 30);
+        var svc = Substitute.For<IGarminService>();
+        StubMinimalBodyComposition(svc, today, muscleMass: rawMuscleMass, visceralFat: 5);
+
+        var report = await ReportBuilder.BuildAsync(svc, 1, today, DateTimeOffset.UnixEpoch);
+
+        Assert.Null(Assert.Single(report.Days).MuscleMassKg);
+    }
+
+    [Fact]
+    public async Task Builder_VisceralFat_RejectsImplausibleValue()
+    {
+        var today = new DateOnly(2026, 6, 30);
+        var svc = Substitute.For<IGarminService>();
+        StubMinimalBodyComposition(svc, today, muscleMass: 30_000, visceralFat: 75); // above the ~1-59 scale
+
+        var report = await ReportBuilder.BuildAsync(svc, 1, today, DateTimeOffset.UnixEpoch);
+
+        Assert.Null(Assert.Single(report.Days).VisceralFatRating);
+    }
+
+    private static void StubMinimalBodyComposition(IGarminService svc, DateOnly today, long muscleMass, double visceralFat)
+    {
+        svc.GetBodyCompositionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new GarminBodyComposition
+            {
+                DateWeightList = new[] { new GarminDateWeight
+                {
+                    CalendarDate = today.ToDateTime(TimeOnly.MinValue),
+                    MuscleMass = muscleMass, VisceralFat = visceralFat,
+                } },
+            });
     }
 
     [Fact]

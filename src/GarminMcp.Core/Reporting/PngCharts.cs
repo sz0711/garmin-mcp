@@ -42,6 +42,8 @@ public static class PngCharts
         ["cadence"] = "Schrittfrequenz (Kadenz) deiner letzten Läufe. Ein stabiler, für dich passender Wert (meist 165–185 spm) spricht für eine effiziente Lauftechnik; ein Abfall über mehrere Läufe kann Ermüdung oder nachlassende Form anzeigen.",
         ["spo2"] = "Sauerstoffsättigung im Blut (SpO₂, nachts gemessen). Normal sind meist 94–100 %. Niedrigere Werte können auf Höhenlage, verstopfte Atemwege oder unruhigen Schlaf hindeuten.",
         ["bodyfat"] = "Körperfettanteil über die Zeit (von einer smarten Waage). Für Marathonläufer zählt der langfristige Trend im Zusammenspiel mit dem Gewicht – schnelle Ausschläge sind meist Messungenauigkeit, kein echter Effekt.",
+        ["musclemass"] = "Muskelmasse über die Zeit (von einer smarten Waage, Bioimpedanz-Schätzung). Werte schwanken stark mit Hydratation und Tageszeit – besonders nach langen Läufen sind kurzfristige Ausschläge meist Messungenauigkeit, kein echter Effekt. Für Marathonläufer zählt nur der langfristige, mehrwöchige Trend im Zusammenspiel mit dem Gewicht.",
+        ["visceralfat"] = "Viszeralfett-Rating einer smarten Waage (Garmin-Skala, grob 1–59). Niedrigere Werte gelten allgemein als gesünder, sind aber nur ein grober Schätzwert – wie bei Körperfett zählt der langfristige Trend, nicht der einzelne Messwert.",
     };
 
     public static List<ChartRef> Generate(GarminReport report, DateOnly today, string outDir)
@@ -129,6 +131,8 @@ public static class PngCharts
         LineChart(Add, "vo2max", "🫁 VO₂max", labels, days.Select(d => d.Vo2Max).ToList(), "#bf5af2");
         LineChart(Add, "weight", "⚖️ Gewicht (kg)", labels, days.Select(d => d.WeightKg).ToList(), "#64d2ff");
         LineChart(Add, "bodyfat", "⚖️ Körperfett (%)", labels, days.Select(d => d.BodyFatPercent).ToList(), "#ff9500");
+        LineChart(Add, "musclemass", "💪 Muskelmasse (kg)", labels, days.Select(d => d.MuscleMassKg).ToList(), "#32d74b");
+        LineChart(Add, "visceralfat", "🫀 Viszeralfett", labels, days.Select(d => d.VisceralFatRating).ToList(), "#ff6961");
 
         var spo2 = days.Select(d => d.SpO2Avg is int v ? (double?)v : null).ToList();
         if (spo2.Count(x => x.HasValue) >= 2)

@@ -26,6 +26,8 @@ public sealed class DayMetrics
     public string? BedtimeLocal { get; set; }  // "HH:mm" for display
     public double? WeightKg { get; set; }      // body weight that day (sparse — only on measurement days)
     public double? BodyFatPercent { get; set; } // body fat % from a smart scale (sparse — only on measurement days)
+    public double? MuscleMassKg { get; set; }   // skeletal muscle mass from a smart scale (sparse — only on measurement days)
+    public double? VisceralFatRating { get; set; } // visceral-fat rating (Garmin scale, roughly 1-59; healthy is single digits) (sparse)
 
     // Pulse-ox (blood oxygen) and breathing rate — Garmin's overnight "Pulse Ox"/respiration sensors.
     public int? SpO2Avg { get; set; }          // average blood-oxygen saturation (%)
@@ -130,6 +132,8 @@ public sealed class GarminReport
                 d.ReadinessScore ??= prev.ReadinessScore;
                 d.WeightKg ??= prev.WeightKg;   // weight isn't measured daily — keep the last known
                 d.BodyFatPercent ??= prev.BodyFatPercent;
+                d.MuscleMassKg ??= prev.MuscleMassKg;
+                d.VisceralFatRating ??= prev.VisceralFatRating;
                 d.SpO2Avg ??= prev.SpO2Avg;
                 d.SpO2Low ??= prev.SpO2Low;
                 d.SleepRespirationRate ??= prev.SleepRespirationRate;

@@ -186,10 +186,18 @@ public static class ReportBuilder
                 var comp = await service.GetBodyCompositionAsync(Iso(start), Iso(today), cancellationToken);
                 foreach (var s in comp.DateWeightList ?? Array.Empty<GarminDateWeight>())
                 {
-                    if (s.BodyFat is not (> 0 and < 70)) continue; // plausible body-fat range only
                     var dayKey = s.CalendarDate.ToString("yyyy-MM-dd");
                     var dd = report.Days.FirstOrDefault(d => d.Date == dayKey);
-                    if (dd is not null) dd.BodyFatPercent = Math.Round(s.BodyFat, 1);
+                    if (dd is null) continue;
+                    if (s.BodyFat is > 0 and < 70) dd.BodyFatPercent = Math.Round(s.BodyFat, 1); // plausible body-fat range only
+                    // MuscleMass is grams in some Garmin accounts, kg in others (same ambiguity the
+                    // WeightKg fetch above already guards against) — apply the same magnitude heuristic.
+                    if (s.MuscleMass is > 0 and < 200_000)
+                    {
+                        var mm = s.MuscleMass > 500 ? s.MuscleMass / 1000.0 : s.MuscleMass;
+                        if (mm is > 10 and < 80) dd.MuscleMassKg = Math.Round(mm, 1); // plausible human muscle mass
+                    }
+                    if (s.VisceralFat is > 0 and < 60) dd.VisceralFatRating = Math.Round(s.VisceralFat, 0); // Garmin's rating scale, ~1-59
                 }
             }
             catch
