@@ -254,9 +254,15 @@ public static class ReportBuilder
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // coaching is an enrichment — leave it null on failure
+            // Coaching is a best-effort enrichment — never abort the whole report over it. But
+            // losing the ENTIRE coaching section (readiness, alerts, pace zones, nutrition) is a
+            // large, user-visible gap, unlike a single missing day/metric elsewhere in this class —
+            // so at minimum leave a diagnostic trail (GitHub Actions captures stderr) instead of
+            // failing completely silently, which makes a real incident like this impossible to
+            // root-cause after the fact.
+            Console.Error.WriteLine($"[ReportBuilder] Coaching computation failed, leaving report.Coaching null: {ex}");
         }
 
         try
@@ -264,8 +270,9 @@ public static class ReportBuilder
             var prs = await service.GetPersonalRecordsAsync(cancellationToken);
             report.PersonalBests = MapPersonalBests(prs);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[ReportBuilder] Personal records fetch failed: {ex.Message}");
             // personal records are optional
         }
 

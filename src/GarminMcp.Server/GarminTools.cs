@@ -148,7 +148,7 @@ public static class GarminTools
     // --- Coaching ---
 
     [McpServerTool(Name = "garmin_daily_coaching")]
-    [Description("THE personal-trainer summary for today: readiness (green/amber/red), the recommended session (rest/easy/moderate/hard), the planned marathon-plan workout reconciled with recovery, target pace zones (easy/marathon/threshold/interval), a daily nutrition target (calories + carb/protein/fat), training status/ACWR/VO2max, race prediction vs. goal, and the next key workout. Use this to advise the user on what to train today, whether to rest, what pace to run, and what to eat.")]
+    [Description("THE personal-trainer summary for today: readiness (green/amber/red), the recommended session (rest/easy/moderate/hard), the planned marathon-plan workout reconciled with recovery, target pace zones (easy/recovery/marathon/threshold/interval), a daily nutrition target (calories + carb/protein/fat), training status/ACWR/VO2max, race prediction vs. goal, and the next key workout. Use this to advise the user on what to train today, whether to rest, what pace to run, and what to eat.")]
     public static async Task<object> GetDailyCoaching(IGarminConnectionProvider provider, CancellationToken cancellationToken)
     {
         if (!provider.IsAuthenticated)

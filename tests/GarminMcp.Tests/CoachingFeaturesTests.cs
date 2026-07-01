@@ -742,4 +742,35 @@ public class CoachingFeaturesTests
 
         Assert.DoesNotContain(alerts, a => a.Title.Contains("Vertikalbewegung"));
     }
+
+    [Fact]
+    public void PastRace_DoesNotShowFreshGoalVerdict()
+    {
+        // A past race (DaysToRace null, RaceDate set) with a still-populated marathon prediction
+        // (Garmin's fitness-based estimate persists long after any specific race date) must NOT
+        // render a forward-looking "on track"/"behind" goal verdict for that finished race.
+        var coaching = new DailyCoaching
+        {
+            Date = Today.ToString("yyyy-MM-dd"),
+            Headline = "🟢 LOCKER / ERHOLUNG",
+            RaceDate = Today.AddDays(-10).ToString("yyyy-MM-dd"),
+            DaysToRace = null,
+            Race = new RacePrediction { MarathonSeconds = 15000 },
+            Goal = "sub 4:10",
+            OnTrackForGoal = true,
+            GoalGapSeconds = -300,
+        };
+        var report = new GarminReport
+        {
+            GeneratedAtUtc = DateTimeOffset.UnixEpoch,
+            Coaching = coaching,
+            Days = { new DayMetrics { Date = Today.ToString("yyyy-MM-dd") } },
+        };
+
+        var md = MarkdownRenderer.Render(report);
+
+        Assert.DoesNotContain("auf Kurs", md);
+        Assert.DoesNotContain("über Ziel", md);
+        Assert.DoesNotContain("hinter Ziel", md);
+    }
 }

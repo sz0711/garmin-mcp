@@ -21,16 +21,20 @@ public sealed class NutritionPlan
 /// known, otherwise falls back to a calorie-percentage split of the day's energy burn.
 /// Sources: ACSM/IOC sports-nutrition carbohydrate periodisation guidelines.
 ///
-/// The calorie target is anchored to the day's Garmin-measured burn rather than an assumed
-/// body-composition goal (we have no signal on whether the athlete wants to gain/lose/
-/// maintain). On the highest-VOLUME days (long run, race — not short/interval "quality"
-/// work, whose energy cost varies too much to apply a single flat factor to) it is uplifted
-/// by a modest, deliberately conservative recovery buffer: a same-day burn reading reflects
-/// logged activity, not necessarily the elevated all-day energy cost of a multi-hour effort
-/// (post-exercise oxygen consumption stays elevated for hours), so targeting exactly the
-/// measured burn risks under-fuelling recovery. This is a directional heuristic, not a
-/// precise physiological calculation — applied identically regardless of whether body
-/// weight is known, since the same measurement-understatement issue applies either way.
+/// The calorie target is anchored to the day's Garmin-measured burn (when a reading exists)
+/// rather than an assumed body-composition goal (we have no signal on whether the athlete wants
+/// to gain/lose/maintain) — when weight is known but no Garmin reading is available, it falls
+/// back to a macro-formula estimate instead, which is NOT a measured burn. On the highest-VOLUME
+/// days (long run, race — not short/interval "quality" work, whose energy cost varies too much to
+/// apply a single flat factor to) the calorie target is uplifted by a modest, deliberately
+/// conservative recovery buffer: a same-day burn reading reflects logged activity, not
+/// necessarily the elevated all-day energy cost of a multi-hour effort (post-exercise oxygen
+/// consumption stays elevated for hours), so targeting exactly the measured burn risks
+/// under-fuelling recovery. This is a directional heuristic, not a precise physiological
+/// calculation, and is applied the same way regardless of whether body weight is known. Note the
+/// per-kg fat floor (see Compute()) can also lift the final calorie target above the
+/// measured/buffered value on a low-burn day — the target is anchored to, not strictly capped by,
+/// the Garmin reading.
 /// </summary>
 public static class NutritionEngine
 {

@@ -21,8 +21,8 @@ public class TrainingTrendsTests
     {
         var report = BuildReport(days =>
         {
-            for (var i = 0; i <= 6; i++) days[i].RestingHeartRate = 45;   // last 7 days
-            for (var i = 21; i <= 27; i++) days[i].RestingHeartRate = 50; // ~4 weeks ago
+            for (var i = 0; i <= 6; i++) days[i].RestingHeartRate = 45;    // last 7 days
+            for (var i = 28; i <= 34; i++) days[i].RestingHeartRate = 50; // exactly 4 weeks ago
         });
 
         var trends = TrainingTrends.Compute(report, Today);
@@ -112,7 +112,7 @@ public class TrainingTrendsTests
         var report = BuildReport(days =>
         {
             for (var i = 0; i <= 6; i++) days[i].RestingHeartRate = 45;
-            for (var i = 21; i <= 27; i++) days[i].RestingHeartRate = 50;
+            for (var i = 28; i <= 34; i++) days[i].RestingHeartRate = 50;
         });
 
         var trends = TrainingTrends.Compute(report, Today);

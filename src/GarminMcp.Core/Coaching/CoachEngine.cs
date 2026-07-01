@@ -102,7 +102,12 @@ public static class CoachEngine
         var rationale = new List<string>();
         int red = 0, amber = 0;
 
-        // --- HRV (trend vs baseline) ---
+        // --- HRV (trend vs baseline). This is TODAY's single-night reading against a short 7-day
+        // baseline — a deliberately fast-reacting signal for "is today off". AlertEngine separately
+        // checks HRV against a longer ~28-day baseline as a slower, more conservative trend signal.
+        // The two can show different urgency (e.g. Red here, Amber there) for the same underlying
+        // dip — that's by design, not a bug: they answer different questions ("today" vs. "trend"),
+        // not the same one twice. ---
         double? hrvBaseline = Avg(prior, d => d.HrvLastNight);
         double? hrvPct = null;
         if (todayM?.HrvLastNight is int hrv && hrvBaseline is double hb && hb > 0)
@@ -137,15 +142,24 @@ public static class CoachEngine
         }
 
         // --- Acute:Chronic Workload Ratio (caps the day) ---
+        // Low ACWR (<0.8) during the taper window is the EXPECTED, desired state (load is meant to
+        // drop) — AlertEngine's own taper check already treats it that way ("ok in der Taper-/
+        // Erholungsphase"). Counting it as an amber flag here would contradict that and could
+        // needlessly water down a planned quality/long session's race-pace work during taper.
+        var inTaperWindow = plan.DaysToRace is int dtrAcwr && dtrAcwr <= 21;
         if (status?.Acwr is double acwr && acwr > 0)
         {
             if (acwr > 1.5) { red++; flags.Add($"Trainingslast-Spitze (ACWR {acwr:0.0} > 1,5) — Verletzungs-Risikofenster"); }
-            else if (acwr > 1.3 || acwr < 0.8) { amber++; flags.Add($"Trainingslast-Verhältnis außerhalb des Ziels (ACWR {acwr:0.0})"); }
+            else if (acwr > 1.3) { amber++; flags.Add($"Trainingslast-Verhältnis außerhalb des Ziels (ACWR {acwr:0.0})"); }
+            else if (acwr < 0.8 && !inTaperWindow) { amber++; flags.Add($"Trainingslast-Verhältnis außerhalb des Ziels (ACWR {acwr:0.0})"); }
         }
 
-        // --- Illness pattern ---
+        // --- Illness pattern (today only — AlertEngine separately watches the same combination as a
+        // multi-day trend over a longer baseline; the two intentionally answer different questions
+        // — "is today acutely off" vs. "has this been building for days" — so they can legitimately
+        // disagree without being wrong. Worded as "akut" here to avoid reading as the same claim.) ---
         bool illness = rhrDelta >= 7 && hrvPct <= -7 && (todayM?.SleepHours is double s2 && s2 < 6);
-        if (illness) flags.Add("Mögliches Krankheits-/Überlastungsmuster (erhöhter Ruhepuls + niedrige HRV + schlechter Schlaf)");
+        if (illness) flags.Add("Mögliches akutes Krankheits-/Überlastungsmuster heute (erhöhter Ruhepuls + niedrige HRV + schlechter Schlaf)");
 
         // --- Roll-up rating ---
         var rating = (red >= 1 || amber >= 3 || illness) ? Readiness.Red
@@ -348,7 +362,14 @@ public static class CoachEngine
             var rest = illness || rhrDelta >= 7;
             return plannedType switch
             {
-                SessionType.Quality or SessionType.Long or SessionType.Race =>
+                // A race can't be "rescheduled to a fresher day" (fixed date, travel, entry fee) — unlike
+                // Quality/Long, don't downgrade the recommendation; that's the athlete's own call to make.
+                // Give race-appropriate caution instead of generic rest-day language.
+                SessionType.Race =>
+                    (SessionType.Race, illness
+                        ? "Wettkampftag, aber ein mögliches Krankheits-/Überlastungsmuster liegt vor — im Zweifel nicht starten oder ärztlichen Rat einholen; falls du startest, sehr konservativ angehen und bereit sein, abzubrechen."
+                        : "Wettkampftag trotz roter Erholung — sehr konservativ starten (deutlich unter Zielpace), Renntempo erst im späteren Streckenverlauf erwägen und auf Warnsignale achten."),
+                SessionType.Quality or SessionType.Long =>
                     (rest ? SessionType.Rest : SessionType.Easy,
                      $"Plan sieht {Describe(planned)} vor, aber die Erholung ist rot — tausche auf {(rest ? "RUHE" : "sehr locker")} und verschiebe die Schlüsseleinheit auf einen frischeren Tag."),
                 SessionType.Easy =>
@@ -361,6 +382,8 @@ public static class CoachEngine
         {
             return plannedType switch
             {
+                SessionType.Race =>
+                    (SessionType.Race, "Wettkampftag bei gelber Erholung — Zieltempo etwas vorsichtiger ansetzen und auf den Körper hören, statt stur die Plan-Zeit zu jagen."),
                 SessionType.Quality =>
                     (SessionType.Easy, $"Plan sieht {Describe(planned)} vor — Erholung ist gelb, also REDUZIEREN (Intensität/Umfang) oder einen Tag verschieben."),
                 SessionType.Long =>
@@ -397,7 +420,7 @@ public static class CoachEngine
 
     private static string Describe(PlannedWorkout? p) =>
         p is null ? "die Einheit" :
-        $"{p.Title ?? p.Type.ToString()}{(p.DistanceKm is double km ? $" ({km} km)" : p.DurationMin is double m ? $" ({m:0} min)" : "")}";
+        $"{(string.IsNullOrWhiteSpace(p.Title) ? SessionTypeNames.German(p.Type) : p.Title)}{(p.DistanceKm is double km ? $" ({km} km)" : p.DurationMin is double m ? $" ({m:0} min)" : "")}";
 
     private static string Humanize(string phrase) =>
         phrase.Replace('_', ' ').ToLowerInvariant() switch

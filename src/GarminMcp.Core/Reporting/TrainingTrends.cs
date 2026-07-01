@@ -27,8 +27,8 @@ public sealed class TrainingTrends
     public static TrainingTrends Compute(GarminReport report, DateOnly today)
     {
         var rStart = today.AddDays(-6); var rEnd = today;                        // last 7 days
-        var pStart = today.AddDays(-27); var pEnd = today.AddDays(-21);          // the 7 days ~4 weeks ago
-        var wStart = today.AddDays(-34);                                        // 5-week window for sparse point metrics
+        var pStart = today.AddDays(-34); var pEnd = today.AddDays(-28);          // the 7 days exactly 4 weeks ago (28 days back from each window boundary)
+        var wStart = today.AddDays(-34);                                        // same start as pStart, for sparse point metrics needing the full span
 
         TrendPoint? AvgPointI(Func<DayMetrics, int?> sel)
         {

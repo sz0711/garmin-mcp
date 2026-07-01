@@ -72,7 +72,9 @@ public static class AlertEngine
             }
         }
 
-        // --- HRV suppressed over several days ---
+        // --- HRV suppressed over several days (recent 2-3-day average vs. the ~28-day baseline —
+        // a slower, more conservative trend signal than CoachEngine's own today-vs-7-day HRV check;
+        // the two intentionally answer different questions and can disagree without being wrong). ---
         if (hrvBase is double hb && hb > 0)
         {
             var recentHrv = recent.Select(d => d.HrvLastNight).Where(v => v.HasValue).Select(v => (double)v!.Value).ToList();
@@ -299,14 +301,19 @@ public static class AlertEngine
             }
         }
 
-        // --- Acute illness / over-reaching pattern (latest day) ---
+        // --- Illness / over-reaching pattern vs. the longer (28-day) baseline ---
+        // CoachEngine runs its own same-named-sounding check for TODAY against a short 7-day
+        // baseline; this one intentionally uses a longer baseline and slightly different thresholds,
+        // so the two can legitimately disagree — they answer "is today acutely off" (CoachEngine) vs.
+        // "is today off relative to a month of history" (here). Worded distinctly to avoid implying
+        // they're the same claim.
         if (rhrBase is double rb2 && hrvBase is double hb2 &&
             latest.RestingHeartRate is int lr && latest.HrvLastNight is int lh && latest.SleepHours is double ls)
         {
             var rhrUp = lr - rb2 >= 6;
             var hrvDown = (lh - hb2) / hb2 * 100.0 <= -10;
             if (rhrUp && hrvDown && ls < 6.5 && !alerts.Any(x => x.Title.StartsWith("Ruhepuls")))
-                alerts.Add(new HealthAlert { Level = AlertLevel.Red, Icon = "🤒", Title = "Mögliches Krankheits-/Überlastungsmuster",
+                alerts.Add(new HealthAlert { Level = AlertLevel.Red, Icon = "🤒", Title = "Mögliches Krankheits-/Überlastungsmuster (4-Wochen-Basis)",
                     Detail = $"Ruhepuls hoch ({lr} bpm), HRV niedrig ({lh} ms) und wenig Schlaf ({ls:0.0} h) treffen zusammen. Heute Ruhe, kein hartes Training – im Zweifel auskurieren." });
         }
 

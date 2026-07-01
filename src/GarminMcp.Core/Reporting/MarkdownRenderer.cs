@@ -586,16 +586,22 @@ public static class MarkdownRenderer
             sb.AppendLine($"- {r}");
 
         if (c.PlanToday.Count > 0)
-            sb.AppendLine($"- 📋 Plan heute: {string.Join(", ", c.PlanToday.Select(p => p.Title ?? p.Type.ToString()))}{(c.PlanNote is null ? "" : $" — {c.PlanNote}")}");
+            sb.AppendLine($"- 📋 Plan heute: {string.Join(", ", c.PlanToday.Select(p => string.IsNullOrWhiteSpace(p.Title) ? SessionTypeNames.German(p.Type) : p.Title))}{(c.PlanNote is null ? "" : $" — {c.PlanNote}")}");
         else if (c.PlanNote is not null)
             sb.AppendLine($"- 📋 {c.PlanNote}");
 
         if (!string.IsNullOrWhiteSpace(c.TodayTargetPace))
             sb.AppendLine($"- 🎯 Zieltempo heute: {c.TodayTargetPace}");
 
+        // 🏁 Race-Countdown (AppendRaceCountdown) renders whenever DaysToRace is in [0,28] —
+        // regardless of whether a marathon-time prediction is available — and, when it does, it
+        // already shows both NextQuality and TaperNote itself. Suppress them here in that window so
+        // they aren't printed twice on the same dashboard render.
+        var raceCountdownRenders = c.DaysToRace is >= 0 and <= 28;
+
         if (c.NextLongRun is not null)
             sb.AppendLine($"- 🛣️ Nächster Longrun: {c.NextLongRun.Date} ({DescribePlan(c.NextLongRun)})");
-        if (c.NextQuality is not null)
+        if (c.NextQuality is not null && !raceCountdownRenders)
             sb.AppendLine($"- ⚡ Nächste harte Einheit: {c.NextQuality.Date} ({DescribePlan(c.NextQuality)})");
 
         // Status/form/adherence metrics move behind a fold: they're genuinely useful, but stacking
@@ -649,7 +655,7 @@ public static class MarkdownRenderer
             racePart += GoalVerdict(c);
             sb.AppendLine($"- {racePart}");
         }
-        else if (!raceCountdownWillShow && c.Race?.MarathonSeconds is int ms2)
+        else if (!isPastRace && !raceCountdownWillShow && c.Race?.MarathonSeconds is int ms2)
         {
             sb.AppendLine($"- 🏁 Marathon-Prognose {FormatTime(ms2)}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $" · Ziel {c.Goal}")}{GoalVerdict(c)}");
         }
@@ -658,7 +664,7 @@ public static class MarkdownRenderer
         if (!isPastRace && !raceCountdownWillShow && !string.IsNullOrWhiteSpace(c.EnduranceCaveat))
             sb.AppendLine($"- 🏃 {c.EnduranceCaveat}");
 
-        if (c.TaperNote is not null) sb.AppendLine($"- ⏳ {c.TaperNote}");
+        if (c.TaperNote is not null && !raceCountdownRenders) sb.AppendLine($"- ⏳ {c.TaperNote}");
 
         if (c.Nutrition is { } n)
         {
@@ -671,7 +677,7 @@ public static class MarkdownRenderer
 
     // ---- Helpers -------------------------------------------------------------
     private static string DescribePlan(PlannedWorkout p) =>
-        $"{p.Title ?? p.Type.ToString()}{(p.DistanceKm is double km ? $", {km} km" : p.DurationMin is double m ? $", {m:0} min" : "")}";
+        $"{(string.IsNullOrWhiteSpace(p.Title) ? SessionTypeNames.German(p.Type) : p.Title)}{(p.DistanceKm is double km ? $", {km} km" : p.DurationMin is double m ? $", {m:0} min" : "")}";
 
     internal static string FormatTime(int seconds)
     {
@@ -796,7 +802,6 @@ public static class MarkdownRenderer
         return stripped.Length == 0 ? null : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(stripped);
     }
 
-    private static string Short(string isoDate) => isoDate.Length >= 10 ? isoDate[5..] : isoDate;
     private static string Val(int? v, string unit) => v is null ? "–" : $"{v}{(unit.Length > 0 ? " " + unit : "")}";
     private static string Val(double? v, string unit) => v is null ? "–" : $"{v}{(unit.Length > 0 ? " " + unit : "")}";
     private static string Cell(int? v) => v?.ToString() ?? "–";

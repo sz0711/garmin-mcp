@@ -13,6 +13,24 @@ public enum SessionType
     Other,
 }
 
+public static class SessionTypeNames
+{
+    /// <summary>Natural-language German fallback name for a planned workout that has no calendar
+    /// title of its own — used instead of the raw English enum name, which would otherwise show up
+    /// mid-sentence in an otherwise fully German coach/dashboard text (e.g. "Plan sieht Quality vor"
+    /// instead of "Plan sieht Qualität vor").</summary>
+    public static string German(SessionType type) => type switch
+    {
+        SessionType.Rest => "Ruhetag",
+        SessionType.Easy => "Lockerer Lauf",
+        SessionType.Long => "Langer Lauf",
+        SessionType.Quality => "Qualität",
+        SessionType.Strength => "Krafttraining",
+        SessionType.Race => "Wettkampf",
+        _ => "Einheit",
+    };
+}
+
 /// <summary>A single scheduled session from the (marathon) training plan.</summary>
 public sealed class PlannedWorkout
 {

@@ -99,6 +99,43 @@ public class CoachEngineTests
     }
 
     [Fact]
+    public void Race_OnRed_IsNotRescheduled()
+    {
+        // A race can't be "swapped to a fresher day" — unlike Quality/Long, the recommendation must
+        // stay Race even on a red-readiness morning; the athlete decides whether to start, not us.
+        var c = CoachEngine.Evaluate(Today, Days(70, 58, 7.5, 90), null, null, Plan(SessionType.Race), null);
+        Assert.Equal(Readiness.Red, c.Readiness);
+        Assert.Equal(SessionType.Race, c.Recommended);
+        Assert.DoesNotContain("verschieb", c.PlanNote!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Race_OnAmber_IsNotDowngradedToEasy()
+    {
+        var c = CoachEngine.Evaluate(Today, Days(70, 50, 6.5, 90), null, null, Plan(SessionType.Race), null); // sleep 6.5h -> Amber
+        Assert.Equal(Readiness.Amber, c.Readiness);
+        Assert.Equal(SessionType.Race, c.Recommended);
+    }
+
+    [Fact]
+    public void LowAcwr_DuringTaper_DoesNotForceAmber()
+    {
+        var status = new TrainingStatusInfo { Acwr = 0.6 };
+        var c = CoachEngine.Evaluate(Today, Days(70, 50, 7.5, 90), null, status, Plan(SessionType.Long, daysToRace: 10), null);
+        Assert.Equal(Readiness.Green, c.Readiness);
+        Assert.DoesNotContain(c.Flags, f => f.Contains("ACWR"));
+    }
+
+    [Fact]
+    public void LowAcwr_OutsideTaper_StillFlagsAmber()
+    {
+        var status = new TrainingStatusInfo { Acwr = 0.6 };
+        var c = CoachEngine.Evaluate(Today, Days(70, 50, 7.5, 90), null, status, Plan(SessionType.Long), null); // no race scheduled
+        Assert.Equal(Readiness.Amber, c.Readiness);
+        Assert.Contains(c.Flags, f => f.Contains("ACWR"));
+    }
+
+    [Fact]
     public void Evaluate_PopulatesNutrition_WithWeight()
     {
         var c = CoachEngine.Evaluate(Today, Days(70, 50, 7.5, 90), null, null, Plan(SessionType.Long), null, goal: null, weightKg: 72);

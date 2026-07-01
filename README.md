@@ -187,9 +187,9 @@ GET /api/garmin/training-trends
 green/amber/red, recommended session rest/easy/moderate/hard, planned workout reconciled
 with recovery, target pace zones, nutrition targets, next key workout),
 `garmin_health_alerts` (early-warning signals from multi-day trends: elevated resting HR,
-suppressed HRV, training-load spikes, sleep debt, training monotony, illness pattern,
-running-economy/cadence and vertical-oscillation drift, easy-run pace discipline, taper
-load reduction), `garmin_training_trends` (current vs. ~4-weeks-ago for resting HR, HRV,
+suppressed HRV, low blood oxygen (SpO2), training-load spikes, sleep debt, training monotony,
+illness pattern, running-economy/cadence and vertical-oscillation drift, easy-run pace
+discipline, taper load reduction), `garmin_training_trends` (current vs. ~4-weeks-ago for resting HR, HRV,
 sleep score, SpO2, weight/body composition, VO₂max, fitness (CTL) and marathon-time
 prediction — the same numbers the dashboard's trend digest shows), `garmin_training_readiness`,
 `garmin_training_status` (VO₂max, ACWR/load), `garmin_race_predictions`,
