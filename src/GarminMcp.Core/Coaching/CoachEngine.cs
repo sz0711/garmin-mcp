@@ -229,7 +229,7 @@ public static class CoachEngine
             : Headline(rating, recommended, plannedToday);
 
         // --- Pace zones + today's target ---
-        var paces = PaceCalculator.FromPredictions(race);
+        var paces = PaceCalculator.FromPredictions(race, activities, today);
         var todayTarget = trainedAndDone ? null
             : paces is not null ? PaceCalculator.TargetForSession(paces, recommended) : null;
 

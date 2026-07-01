@@ -32,6 +32,107 @@ public class CoachingFeaturesTests
         Assert.Equal("5:20/km", PaceZone.Fmt(320));
     }
 
+    // Shared test scenario: HalfMarathonSeconds=7380 → threshold ≈ 7380/21.0975 ≈ 350 s/km (5:50/km),
+    // matching the real-world case this fix addresses (see CoachEngine's EnduranceCaveat): the
+    // formula fallback would anchor "Locker" at threshold+65 ≈ 415 s/km (6:55/km) — markedly slower
+    // than the ~375 s/km (6:15/km) easy pace the athlete actually, comfortably runs.
+    private static readonly RacePrediction PaceTestRace = new() { HalfMarathonSeconds = 7380, MarathonSeconds = 16560 };
+
+    [Fact]
+    public void PaceCalculator_EasyZone_PrefersObservedPaceOverFormula_WhenEnoughHistory()
+    {
+        var activities = new List<ActivitySummary>();
+        for (var i = 0; i < 5; i++)
+            activities.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 3).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 8, DurationMin = 50, AverageHr = 138 }); // 50*60/8 = 375 s/km
+
+        var zones = PaceCalculator.FromPredictions(PaceTestRace, activities, Today);
+
+        var easy = zones!.ByKey("easy")!;
+        Assert.Equal(360, easy.LowSecPerKm);  // observed 375 - 15
+        Assert.Equal(395, easy.HighSecPerKm); // observed 375 + 20
+        // Must not regress to the old, markedly slower marathon/threshold-anchored range (~400-435).
+        Assert.True(easy.HighSecPerKm < 400);
+    }
+
+    [Fact]
+    public void PaceCalculator_EasyZone_FallsBackToFormula_WithTooFewEasyRuns()
+    {
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = Today.ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 8, DurationMin = 50, AverageHr = 138 },
+            new() { Id = 2, Date = Today.AddDays(-3).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 8, DurationMin = 50, AverageHr = 138 },
+        }; // only 2 qualifying runs — below the trust threshold of 3
+
+        var zones = PaceCalculator.FromPredictions(PaceTestRace, activities, Today);
+
+        // Falls back to threshold+65 (threshold ≈ 350 s/km → easy center ≈ 415 s/km), NOT the
+        // faster 375 s/km the (too sparse) run history suggests.
+        var easy = zones!.ByKey("easy")!;
+        Assert.Equal(400, easy.LowSecPerKm);  // 415 - 15
+        Assert.Equal(435, easy.HighSecPerKm); // 415 + 20
+    }
+
+    [Fact]
+    public void PaceCalculator_EasyZone_ExcludesStaleAndHardEffortRuns()
+    {
+        var activities = new List<ActivitySummary>();
+        // 5 recent runs at Quality effort (high HR) — must not count as "easy" evidence.
+        for (var i = 0; i < 5; i++)
+            activities.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 8, DurationMin = 40, AverageHr = 165 }); // hard effort, fast pace
+        // 5 genuinely-easy runs, but 100 days old — outside the 90-day recency window.
+        for (var i = 0; i < 5; i++)
+            activities.Add(new ActivitySummary { Id = 10 + i, Date = Today.AddDays(-100 - i).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 8, DurationMin = 50, AverageHr = 138 });
+
+        var zones = PaceCalculator.FromPredictions(PaceTestRace, activities, Today);
+
+        // With no qualifying (recent + easy-effort) runs, the formula fallback applies (easy center
+        // ≈ 415 s/km) — the fast, hard-effort pace (40*60/8=300 s/km) must NOT have been mistaken
+        // for the athlete's easy pace.
+        var easy = zones!.ByKey("easy")!;
+        Assert.Equal(400, easy.LowSecPerKm);
+    }
+
+    [Fact]
+    public void PaceCalculator_EasyZone_RejectsImplausibleObservedPace_TooCloseToThreshold()
+    {
+        // A wrist-HR sensor can under-read on a genuinely hard effort (dropout/cadence-lock
+        // artifacts) — if that happened across several runs, the "observed" pace could land close
+        // to or faster than threshold (350 s/km here), which is physiologically nonsensical for an
+        // easy pace. The plausibility guard must reject it and fall back to the formula instead.
+        var activities = new List<ActivitySummary>();
+        for (var i = 0; i < 5; i++)
+            activities.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 3).ToString("yyyy-MM-dd"),
+                Type = "running", DistanceKm = 8, DurationMin = 47, AverageHr = 149 }); // 47*60/8 = 352.5 s/km — barely slower than threshold
+
+        var zones = PaceCalculator.FromPredictions(PaceTestRace, activities, Today);
+
+        var easy = zones!.ByKey("easy")!;
+        Assert.Equal(400, easy.LowSecPerKm); // formula fallback (415-15), not the implausible ~353
+    }
+
+    [Fact]
+    public void PaceCalculator_EasyZone_ObservedPace_UsesTrueMedian_ForEvenSampleSize()
+    {
+        // 4 qualifying runs (even count): true median averages the two middle paces, rather than
+        // picking only the upper-middle one (a plain Count/2 index would silently do that).
+        var activities = new List<ActivitySummary>
+        {
+            new() { Id = 1, Date = Today.ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 60, AverageHr = 138 },        // 360 s/km
+            new() { Id = 2, Date = Today.AddDays(-3).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 61, AverageHr = 138 }, // 366 s/km
+            new() { Id = 3, Date = Today.AddDays(-6).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 63, AverageHr = 138 }, // 378 s/km
+            new() { Id = 4, Date = Today.AddDays(-9).ToString("yyyy-MM-dd"), Type = "running", DistanceKm = 10, DurationMin = 64, AverageHr = 138 }, // 384 s/km
+        };
+        // Sorted: [360, 366, 378, 384] → true median = (366+378)/2 = 372, NOT paces[2]=378.
+
+        var zones = PaceCalculator.FromPredictions(PaceTestRace, activities, Today);
+
+        var easy = zones!.ByKey("easy")!;
+        Assert.Equal(357, easy.LowSecPerKm); // 372 - 15
+    }
+
     [Fact]
     public void Coach_RecognisesSessionAlreadyDoneToday()
     {
