@@ -467,7 +467,7 @@ public static class MarkdownRenderer
 
     private static string ChartGroup(string file) => IdOf(file) switch
     {
-        "form" or "tsb" or "heatmap" or "acwr" or "vo2max" or "cadence" => "🏋️ Form & Belastung",
+        "form" or "tsb" or "heatmap" or "acwr" or "vo2max" or "cadence" or "efficiencyfactor" => "🏋️ Form & Belastung",
         "readiness" or "rhr" or "hrv" or "bodybattery" or "stress" or "spo2" => "❤️ Herz & Erholung",
         "sleep" or "sleepstages" or "sleepscore" or "bedtime" => "😴 Schlaf",
         _ => "📊 Training & Sonstiges", // weeklykm, typesplit, marathon, steps, weight, bodyfat, …

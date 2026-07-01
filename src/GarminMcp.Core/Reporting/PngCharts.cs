@@ -44,6 +44,7 @@ public static class PngCharts
         ["bodyfat"] = "Körperfettanteil über die Zeit (von einer smarten Waage). Für Marathonläufer zählt der langfristige Trend im Zusammenspiel mit dem Gewicht – schnelle Ausschläge sind meist Messungenauigkeit, kein echter Effekt.",
         ["musclemass"] = "Muskelmasse über die Zeit (von einer smarten Waage, Bioimpedanz-Schätzung). Werte schwanken stark mit Hydratation und Tageszeit – besonders nach langen Läufen sind kurzfristige Ausschläge meist Messungenauigkeit, kein echter Effekt. Für Marathonläufer zählt nur der langfristige, mehrwöchige Trend im Zusammenspiel mit dem Gewicht.",
         ["visceralfat"] = "Viszeralfett-Rating einer smarten Waage (Garmin-Skala, grob 1–59). Niedrigere Werte gelten allgemein als gesünder, sind aber nur ein grober Schätzwert – wie bei Körperfett zählt der langfristige Trend, nicht der einzelne Messwert.",
+        ["efficiencyfactor"] = "Effizienz-Faktor (grad-korrigierte Geschwindigkeit pro Herzschlag) über deine letzten lockeren Läufe. Ein steigender Wert bei ähnlichem Gefühl zeigt wachsende aerobe Fitness unabhängig von VO₂max, das Garmin nur gelegentlich aktualisiert; ein fallender Wert kann Ermüdung oder Formverlust anzeigen.",
     };
 
     public static List<ChartRef> Generate(GarminReport report, DateOnly today, string outDir)
@@ -153,6 +154,28 @@ public static class PngCharts
             {
                 new Series("Kadenz", "#34c759", cValues, false),
                 new Series("Ø5L", "#9be8ac", Rolling5(cValues), false),
+            }));
+        }
+
+        // Efficiency Factor across recent easy-effort runs (same "easy" population TrainingTrends
+        // uses, so the chart and the trend-table row tell a consistent story). x-axis = run dates,
+        // not calendar days, matching the cadence chart above for the same reason.
+        var efRuns = report.Activities
+            .Where(a => a.IsRun && a.DistanceKm is >= 3 and <= 25 && a.DurationMin is > 0
+                        && a.AverageHr is int hr && hr > 0 && hr < (a.DistanceKm >= 8 ? 150 : 155)
+                        && !(a.AnaerobicEffect is double ae && ae >= 2.0)
+                        && DateOnly.TryParse(a.Date, out var efd) && efd <= today)
+            .OrderBy(a => a.Date, StringComparer.Ordinal)
+            .TakeLast(20)
+            .ToList();
+        if (efRuns.Count >= 2)
+        {
+            var efLabels = efRuns.Select(a => Short(a.Date)).ToList();
+            var efValues = efRuns.Select(a => (double?)RunningEconomy.EfficiencyFactor(a.DistanceKm!.Value, a.DurationMin!.Value, a.AverageHr, a.ElevationGainM)).ToList();
+            Add("efficiencyfactor", "⚙️ Effizienz-Faktor (lockere Läufe)", f => Draw(f, efLabels, new[]
+            {
+                new Series("EF", "#5e5ce6", efValues, false),
+                new Series("Ø5L", "#b9b8f5", Rolling5(efValues), false),
             }));
         }
 
