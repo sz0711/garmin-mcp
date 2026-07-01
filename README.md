@@ -152,6 +152,9 @@ GET /api/garmin/daily-summary?date=2026-06-30
 GET /api/garmin/sleep?date=2026-06-29
 GET /api/garmin/activities?start=0&limit=20
 GET /api/garmin/body-battery?startDate=2026-06-25&endDate=2026-06-30
+GET /api/garmin/coaching
+GET /api/garmin/health-alerts
+GET /api/garmin/training-trends
 ```
 
 ---
@@ -186,8 +189,11 @@ with recovery, target pace zones, nutrition targets, next key workout),
 `garmin_health_alerts` (early-warning signals from multi-day trends: elevated resting HR,
 suppressed HRV, training-load spikes, sleep debt, training monotony, illness pattern,
 running-economy/cadence and vertical-oscillation drift, easy-run pace discipline, taper
-load reduction), `garmin_training_readiness`, `garmin_training_status` (VO₂max,
-ACWR/load), `garmin_race_predictions`, `garmin_scheduled_workouts` (marathon plan).
+load reduction), `garmin_training_trends` (current vs. ~4-weeks-ago for resting HR, HRV,
+sleep score, SpO2, weight/body composition, VO₂max, fitness (CTL) and marathon-time
+prediction — the same numbers the dashboard's trend digest shows), `garmin_training_readiness`,
+`garmin_training_status` (VO₂max, ACWR/load), `garmin_race_predictions`,
+`garmin_scheduled_workouts` (marathon plan).
 
 ## Live E2E test (optional, with a real token)
 

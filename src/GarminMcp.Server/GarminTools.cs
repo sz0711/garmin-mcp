@@ -202,6 +202,17 @@ public static class GarminTools
         return TrainingPlanReader.BuildAsync(provider.Service, LocalDate.Today(), cancellationToken);
     }
 
+    [McpServerTool(Name = "garmin_training_trends")]
+    [Description("How training has trended over the last 4 weeks: current (last-7-day average) vs. ~4-weeks-ago value for resting heart rate, HRV, sleep score, SpO2, weight, body fat, muscle mass, visceral fat, VO2max, fitness (CTL) and marathon-time prediction. Each metric is present only when there's enough data. Use this to answer 'how am I trending' / 'is my fitness improving' style questions.")]
+    public static async Task<TrainingTrends> GetTrainingTrends(IGarminConnectionProvider provider, CancellationToken cancellationToken)
+    {
+        if (!provider.IsAuthenticated)
+            throw new GarminNotAuthenticatedException(provider.SetupUrl);
+        var today = LocalDate.Today();
+        var report = await ReportBuilder.BuildAsync(provider.Service, 35, today, DateTimeOffset.UtcNow, provider.Metrics, null, cancellationToken);
+        return TrainingTrends.Compute(report, today);
+    }
+
     private static GarminMetricsClient RequireMetrics(IGarminConnectionProvider provider)
         => provider.Metrics ?? throw new GarminNotAuthenticatedException(provider.SetupUrl);
 

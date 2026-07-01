@@ -33,16 +33,31 @@ public static class GarminRestApi
         api.MapGet("/activities/{activityId:long}", (IGarminService g, long activityId, CancellationToken ct) => g.GetActivityDetailsAsync(activityId, ct));
         api.MapGet("/personal-records", (IGarminService g, CancellationToken ct) => g.GetPersonalRecordsAsync(ct));
 
-        // Coaching
+        // Coaching. "Today" is resolved via LocalDate.Today() (timezone-aware, see LocalDate.cs) —
+        // not DateTime.Today — so the REST surface agrees with the MCP tools on which calendar day
+        // is "today" near local midnight, instead of using the container's naive/UTC clock.
         api.MapGet("/coaching", async (IGarminConnectionProvider p, CancellationToken ct) =>
         {
             if (!p.IsAuthenticated) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
             var goal = Environment.GetEnvironmentVariable("GARMIN_GOAL");
-            var r = await ReportBuilder.BuildAsync(p.Service, 14, DateOnly.FromDateTime(DateTime.Today), DateTimeOffset.UtcNow, p.Metrics, goal, ct);
+            var r = await ReportBuilder.BuildAsync(p.Service, 14, LocalDate.Today(), DateTimeOffset.UtcNow, p.Metrics, goal, ct);
             return Results.Json((object?)r.Coaching ?? new { message = "No coaching available yet." });
         });
+        api.MapGet("/health-alerts", async (IGarminConnectionProvider p, CancellationToken ct) =>
+        {
+            if (!p.IsAuthenticated) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
+            var r = await ReportBuilder.BuildAsync(p.Service, 30, LocalDate.Today(), DateTimeOffset.UtcNow, p.Metrics, null, ct);
+            return Results.Json(new { alerts = r.Alerts });
+        });
+        api.MapGet("/training-trends", async (IGarminConnectionProvider p, CancellationToken ct) =>
+        {
+            if (!p.IsAuthenticated) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
+            var today = LocalDate.Today();
+            var r = await ReportBuilder.BuildAsync(p.Service, 35, today, DateTimeOffset.UtcNow, p.Metrics, null, ct);
+            return Results.Json(TrainingTrends.Compute(r, today));
+        });
         api.MapGet("/scheduled-workouts", (IGarminConnectionProvider p, CancellationToken ct) =>
-            TrainingPlanReader.BuildAsync(p.Service, DateOnly.FromDateTime(DateTime.Today), ct));
+            TrainingPlanReader.BuildAsync(p.Service, LocalDate.Today(), ct));
         api.MapGet("/training-readiness", async (IGarminConnectionProvider p, string date, CancellationToken ct) =>
             (object?)(p.Metrics is null ? null : await p.Metrics.GetTrainingReadinessAsync(Day(date), ct)) ?? new { message = "no data" });
         api.MapGet("/training-status", async (IGarminConnectionProvider p, string date, CancellationToken ct) =>

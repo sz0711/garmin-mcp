@@ -283,68 +283,32 @@ public static class MarkdownRenderer
     // ---- 4-week trend digest -------------------------------------------------
     private static void AppendTrends(StringBuilder sb, GarminReport report, DateOnly today)
     {
-        var rStart = today.AddDays(-6); var rEnd = today;          // last 7 days
-        var pStart = today.AddDays(-27); var pEnd = today.AddDays(-21); // the 7 days ~4 weeks ago
-        var wStart = today.AddDays(-34);                            // 5-week window for sparse point metrics
-
+        var t = TrainingTrends.Compute(report, today);
         var rows = new List<string>();
 
-        void AvgRow(string label, Func<DayMetrics, int?> sel, string unit, bool lowerBetter)
+        void Row(string label, TrendPoint? p, string unit, bool? lowerBetter, string fmt)
         {
-            var cur = AvgRange(report.Days, rStart, rEnd, sel);
-            if (cur is null) return;
-            var past = AvgRange(report.Days, pStart, pEnd, sel);
-            rows.Add($"| {label} | {cur.Value.ToString("0")}{unit} | {TrendCell(cur, past, lowerBetter, v => v.ToString("0"))} |");
+            if (p is null) return;
+            rows.Add($"| {label} | {p.Current.ToString(fmt)}{unit} | {TrendCell(p.Current, p.Past, lowerBetter, v => v.ToString(fmt))} |");
         }
 
-        AvgRow("❤️ Ruhepuls", d => d.RestingHeartRate, " bpm", lowerBetter: true);
-        AvgRow("💓 HRV", d => d.HrvLastNight, " ms", lowerBetter: false);
-        AvgRow("😴 Schlaf-Score", d => d.SleepScore, "", lowerBetter: false);
-        AvgRow("🫁 SpO₂", d => d.SpO2Avg, " %", lowerBetter: false);
-
-        var wCur = AvgRange(report.Days, rStart, rEnd, d => d.WeightKg);
-        if (wCur is double wc)
-        {
-            var wPast = AvgRange(report.Days, pStart, pEnd, d => d.WeightKg);
-            rows.Add($"| ⚖️ Gewicht | {wc.ToString("0.0")} kg | {TrendCell(wCur, wPast, null, v => v.ToString("0.0"))} |");
-        }
-
-        var bfCur = AvgRange(report.Days, rStart, rEnd, d => d.BodyFatPercent);
-        if (bfCur is double bf)
-        {
-            var bfPast = AvgRange(report.Days, pStart, pEnd, d => d.BodyFatPercent);
-            rows.Add($"| 🧬 Körperfett | {bf.ToString("0.0")} % | {TrendCell(bfCur, bfPast, null, v => v.ToString("0.0"))} |");
-        }
-
+        Row("❤️ Ruhepuls", t.RestingHeartRate, " bpm", lowerBetter: true, "0");
+        Row("💓 HRV", t.Hrv, " ms", lowerBetter: false, "0");
+        Row("😴 Schlaf-Score", t.SleepScore, "", lowerBetter: false, "0");
+        Row("🫁 SpO₂", t.SpO2, " %", lowerBetter: false, "0");
+        Row("⚖️ Gewicht", t.WeightKg, " kg", lowerBetter: null, "0.0");
+        Row("🧬 Körperfett", t.BodyFatPercent, " %", lowerBetter: null, "0.0");
         // Neutral (lowerBetter: null) like weight/body-fat above: body-composition direction isn't
         // unambiguously "good" or "bad" without knowing the athlete's actual goal, and pushing a
         // health judgment here risks being overconfident (e.g. very low body fat can itself be a
         // training-risk signal, not a win).
-        var mmCur = AvgRange(report.Days, rStart, rEnd, d => d.MuscleMassKg);
-        if (mmCur is double mm)
-        {
-            var mmPast = AvgRange(report.Days, pStart, pEnd, d => d.MuscleMassKg);
-            rows.Add($"| 💪 Muskelmasse | {mm.ToString("0.0")} kg | {TrendCell(mmCur, mmPast, null, v => v.ToString("0.0"))} |");
-        }
+        Row("💪 Muskelmasse", t.MuscleMassKg, " kg", lowerBetter: null, "0.0");
+        Row("🫀 Viszeralfett", t.VisceralFatRating, "", lowerBetter: null, "0");
+        Row("🫁 VO₂max", t.Vo2Max, "", lowerBetter: false, "0.0");
+        Row("🏋️ Fitness (CTL)", t.FitnessCtl, "", lowerBetter: false, "0");
 
-        var vfCur = AvgRange(report.Days, rStart, rEnd, d => d.VisceralFatRating);
-        if (vfCur is double vf)
-        {
-            var vfPast = AvgRange(report.Days, pStart, pEnd, d => d.VisceralFatRating);
-            rows.Add($"| 🫀 Viszeralfett | {vf.ToString("0")} | {TrendCell(vfCur, vfPast, null, v => v.ToString("0"))} |");
-        }
-
-        var (vF, vL) = FirstLast(report.Days, wStart, today, d => d.Vo2Max);
-        if (vL is double vl)
-            rows.Add($"| 🫁 VO₂max | {vl.ToString("0.0")} | {TrendCell(vL, vF, false, v => v.ToString("0.0"))} |");
-
-        var (pmc, _, _, _) = LoadModel.Compute(report.Activities, today, 35);
-        if (pmc.Count >= 2)
-            rows.Add($"| 🏋️ Fitness (CTL) | {pmc[^1].Ctl.ToString("0")} | {TrendCell(pmc[^1].Ctl, pmc[0].Ctl, false, v => v.ToString("0"))} |");
-
-        var (mF, mL) = FirstLast(report.Days, wStart, today, d => d.MarathonSeconds is int s ? s : (double?)null);
-        if (mL is double ml)
-            rows.Add($"| ⏱️ Marathon-Prognose | {FormatTime((int)ml)} | {TrendCellTime(mL, mF)} |");
+        if (t.MarathonPredictionSeconds is { } mp)
+            rows.Add($"| ⏱️ Marathon-Prognose | {FormatTime((int)mp.Current)} | {TrendCellTime(mp.Current, mp.Past)} |");
 
         if (rows.Count < 2) return;
         sb.AppendLine("## 📈 Trends (4 Wochen)");
@@ -376,7 +340,7 @@ public static class MarkdownRenderer
         return $"{arrow} {(d > 0 ? "+" : "−")}{FormatTime(Math.Abs(d))}{judge}";
     }
 
-    private static (double? First, double? Last) FirstLast(
+    internal static (double? First, double? Last) FirstLast(
         IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, double?> sel)
     {
         var pts = days
@@ -744,14 +708,16 @@ public static class MarkdownRenderer
         return v.Count > 0 ? v.Average() : null;
     }
 
-    private static double? AvgRange(IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, int?> sel)
+    // internal (not private): also called by TrainingTrends.Compute, the shared computation behind
+    // both this markdown digest and the garmin_training_trends MCP tool.
+    internal static double? AvgRange(IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, int?> sel)
     {
         var v = days.Where(d => DateOnly.TryParse(d.Date, out var dd) && dd >= start && dd <= end)
             .Select(sel).Where(x => x.HasValue).Select(x => (double)x!.Value).ToList();
         return v.Count > 0 ? v.Average() : null;
     }
 
-    private static double? AvgRange(IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, double?> sel)
+    internal static double? AvgRange(IReadOnlyList<DayMetrics> days, DateOnly start, DateOnly end, Func<DayMetrics, double?> sel)
     {
         var v = days.Where(d => DateOnly.TryParse(d.Date, out var dd) && dd >= start && dd <= end)
             .Select(sel).Where(x => x.HasValue).Select(x => x!.Value).ToList();
