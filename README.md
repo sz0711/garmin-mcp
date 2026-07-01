@@ -208,8 +208,9 @@ The dashboard renders, top to bottom:
 - **Hero card** — a designed at-a-glance image: readiness (green/amber/red), today's
   recommendation, and resting HR / HRV / sleep / Body Battery / Form / weekly km.
 - **Early-warning system** — multi-day-trend alerts (elevated resting HR, suppressed HRV,
-  training-load spike via ACWR, accumulated sleep debt, Foster training monotony, illness
-  pattern), or an honest all-clear / "too little history" state.
+  training-load spike via ACWR, accumulated sleep debt, Foster training monotony, low blood
+  oxygen, a pace-normalized running-cadence decline, illness pattern), or an honest all-clear
+  / "too little history" state.
 - **Daily coach** — readiness-anchored recommendation (rest/easy/moderate/hard) reconciled
   with the marathon-plan workout; **recognises training already done today**; with a
   **daily fuelling target** (calories + carb/protein/fat scaled to load & body weight) and
@@ -219,10 +220,14 @@ The dashboard renders, top to bottom:
   workout** (steps + target pace), and **training pace zones** derived from race predictions.
 - **Weekly overview & review** (this week vs last week, WHO intensity-minutes goal, plan
   adherence, plus a Monday LLM weekly recap/outlook), **4-week trend digest** (VO₂max, RHR,
-  HRV, fitness, weight, marathon prediction with deltas), **week ahead**, **personal bests**,
-  and a gallery of trend charts (Form/CTL-ATL, readiness, RHR, HRV, sleep & sleep stages,
-  steps, Body Battery, stress, VO₂max, weight, ACWR, bedtime, weekly km, sport split, plus a
-  GitHub-style training-load calendar heatmap) — each with a short explanation.
+  HRV, sleep score, blood oxygen, fitness, weight, body fat, marathon prediction with deltas),
+  **week ahead**, **personal bests**, activity log with **running dynamics** (cadence, ground
+  contact time, vertical oscillation, stride length) and Garmin's own per-run training effect,
+  and a gallery of trend charts — grouped into collapsible sections (Form & load, heart &
+  recovery, sleep, training & other) covering Form/CTL-ATL, readiness, RHR, HRV, sleep & sleep
+  stages & sleep score, blood oxygen, steps, Body Battery, stress, VO₂max, weight, body fat,
+  ACWR, bedtime, running cadence, weekly km, sport split, and a GitHub-style training-load
+  calendar heatmap — each with a short explanation.
 
 Optional repo variable `GARMIN_GOAL` (e.g. `sub 4:00`) makes coaching goal-aware. If a
 scheduled run fails, the workflow opens a GitHub issue. The same coaching is also exposed
