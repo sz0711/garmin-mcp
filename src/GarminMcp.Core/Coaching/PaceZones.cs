@@ -94,7 +94,7 @@ public static class PaceCalculator
         return zones.Count == 0 ? null : new PaceZones { Zones = zones, MarathonPaceSecPerKm = mp, FormulaEasyLowSecPerKm = formulaEasyLow };
     }
 
-    /// <summary>Median grade-adjusted pace (sec/km) of recent clearly-aerobic runs, or null if there
+    /// <summary>Median raw pace (sec/km) of recent clearly-aerobic runs, or null if there
     /// isn't enough evidence to trust it over the formula. Distance bounds exclude noise (very short
     /// strides/warmups) and long runs (often paced slower than pure "easy" due to accumulated
     /// fatigue). The HR threshold mirrors CoachEngine's own distance-dependent quality-session cutoff

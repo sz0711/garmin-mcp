@@ -236,15 +236,16 @@ The dashboard renders, top to bottom:
   drift relative to pace, a hint of inadequate aerobic base, heat, or dehydration), both computed
   from lap splits (one extra API call, only for that single run, not the whole activity window).
 - **Weekly overview & review** (this week vs last week, WHO intensity-minutes goal, plan
-  adherence, plus a Monday LLM weekly recap/outlook), **4-week trend digest** (VO₂max, RHR,
-  HRV, sleep score, blood oxygen, fitness, weight, body fat, marathon prediction with deltas),
-  **week ahead**, **personal bests**, activity log with **running dynamics** (cadence, ground
-  contact time, vertical oscillation, stride length) and Garmin's own per-run training effect,
-  and a gallery of trend charts — grouped into collapsible sections (Form & load, heart &
-  recovery, sleep, training & other) covering Form/CTL-ATL, readiness, RHR, HRV, sleep & sleep
-  stages & sleep score, blood oxygen, steps, Body Battery, stress, VO₂max, weight, body fat,
-  ACWR, bedtime, running cadence, weekly km, sport split, and a GitHub-style training-load
-  calendar heatmap — each with a short explanation.
+  adherence, plus a Monday LLM weekly recap/outlook that also picks up the pacing analysis
+  above), **4-week trend digest** (VO₂max, RHR, HRV, sleep score, blood oxygen, fitness, weight,
+  body fat, efficiency factor, marathon prediction with deltas), **week ahead**, **personal
+  bests**, activity log with **running dynamics** (cadence, ground contact time, vertical
+  oscillation, stride length) and Garmin's own per-run training effect, and a gallery of trend
+  charts — grouped into collapsible sections (Form & load, heart & recovery, sleep, training &
+  other) covering Form/CTL-ATL, readiness, RHR, HRV, sleep & sleep stages & sleep score, blood
+  oxygen, steps, Body Battery, stress, VO₂max, efficiency factor, weight, body fat, ACWR,
+  bedtime, running cadence, weekly km, sport split, and a GitHub-style training-load calendar
+  heatmap — each with a short explanation.
 
 Optional repo variable `GARMIN_GOAL` (e.g. `sub 4:00`) makes coaching goal-aware. If a
 scheduled run fails, the workflow opens a GitHub issue. The same coaching is also exposed
