@@ -10,12 +10,13 @@ public class SplitAnalyzerTests
     private static readonly ActivitySummary LongRun = new() { Id = 1, Date = "2026-06-28", Name = "Longrun" };
 
     // distanceM in meters, paceSecPerKm in seconds/km -> duration derived so the pace comes out exact.
-    private static LapDto Lap(int index, double distanceM, double paceSecPerKm, double elevationGain = 0) => new()
+    private static LapDto Lap(int index, double distanceM, double paceSecPerKm, double elevationGain = 0, double avgHr = 0) => new()
     {
         LapIndex = index,
         Distance = distanceM,
         Duration = distanceM / 1000.0 * paceSecPerKm,
         ElevationGain = elevationGain,
+        AverageHr = avgHr,
     };
 
     private static GarminActivitySplits Splits(params LapDto[] laps) => new() { ActivityId = 1, LapDtOs = laps };
@@ -149,5 +150,71 @@ public class SplitAnalyzerTests
         Assert.NotNull(result);
         Assert.Equal(20.0, result!.DistanceKm);
         Assert.Equal(SplitVerdict.Positive, result.Verdict);
+    }
+
+    [Fact]
+    public void Analyze_DetectsAerobicDecoupling_WhenHrRisesAtSamePace()
+    {
+        // Same grade-adjusted pace both halves, but HR climbs from 140 to 155 -- efficiency (speed
+        // per heartbeat) worsened, which pace comparison alone would miss entirely (Even verdict).
+        var laps = new List<LapDto>();
+        for (var i = 0; i < 4; i++) laps.Add(Lap(i, 5000, 300, avgHr: 140));
+        for (var i = 4; i < 8; i++) laps.Add(Lap(i, 5000, 300, avgHr: 155));
+
+        var result = SplitAnalyzer.Analyze(Splits(laps.ToArray()), LongRun);
+
+        Assert.NotNull(result);
+        Assert.Equal(SplitVerdict.Even, result!.Verdict); // pace alone looks fine
+        Assert.NotNull(result.AerobicDecouplingPercent);
+        Assert.True(result.AerobicDecouplingPercent > 5); // but decoupling flags the real story
+    }
+
+    [Fact]
+    public void Analyze_LeavesDecouplingNull_WhenMostLapsInAHalfLackHeartRate()
+    {
+        // 10 laps of 5km each -> 5 laps per half. First half: only 1 of 5 laps (20% of that half's
+        // duration) has a real HR reading, the rest default to 0 (Garmin's "no sensor data" marker).
+        // A naive duration-weighted average over ALL laps (including the zero ones) would still land
+        // above a bare floor and look like a plausible-but-wrong low HR -- must come out null instead.
+        var laps = new List<LapDto> { Lap(0, 5000, 300, avgHr: 150) };
+        for (var i = 1; i < 5; i++) laps.Add(Lap(i, 5000, 300)); // avgHr defaults to 0
+        for (var i = 5; i < 10; i++) laps.Add(Lap(i, 5000, 300, avgHr: 150)); // second half: full HR coverage
+
+        var result = SplitAnalyzer.Analyze(Splits(laps.ToArray()), LongRun);
+
+        Assert.NotNull(result);
+        Assert.Null(result!.AerobicDecouplingPercent);
+    }
+
+    [Fact]
+    public void Analyze_ComputesDecoupling_WhenCoverageIsAtTheEightyPercentBoundary()
+    {
+        // Same shape as above, but 4 of 5 laps per half have real HR (80% coverage, the pass/fail
+        // boundary) -- should compute normally, ignoring only the single sensor-dropout lap.
+        var laps = new List<LapDto>();
+        for (var i = 0; i < 4; i++) laps.Add(Lap(i, 5000, 300, avgHr: 140));
+        laps.Add(Lap(4, 5000, 300)); // dropout lap, avgHr defaults to 0
+        for (var i = 5; i < 9; i++) laps.Add(Lap(i, 5000, 300, avgHr: 155));
+        laps.Add(Lap(9, 5000, 300)); // dropout lap, avgHr defaults to 0
+
+        var result = SplitAnalyzer.Analyze(Splits(laps.ToArray()), LongRun);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result!.AerobicDecouplingPercent);
+        Assert.True(result.AerobicDecouplingPercent > 5);
+    }
+
+    [Fact]
+    public void Analyze_LeavesDecouplingNull_WhenNoHeartRateData()
+    {
+        // AverageHr defaults to 0 (Garmin's "no sensor data" convention for this DTO, not null).
+        var laps = new List<LapDto>();
+        for (var i = 0; i < 4; i++) laps.Add(Lap(i, 5000, 300));
+        for (var i = 4; i < 8; i++) laps.Add(Lap(i, 5000, 330));
+
+        var result = SplitAnalyzer.Analyze(Splits(laps.ToArray()), LongRun);
+
+        Assert.NotNull(result);
+        Assert.Null(result!.AerobicDecouplingPercent);
     }
 }

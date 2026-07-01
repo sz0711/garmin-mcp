@@ -396,6 +396,14 @@ public static class MarkdownRenderer
         sb.AppendLine();
         sb.AppendLine($"_{advice}_");
         sb.AppendLine();
+        if (p.AerobicDecouplingPercent is double drift)
+        {
+            var driftNote = drift > 5.0
+                ? $"⚠️ Kardiales Driften: {drift:+0.0;-0.0;0.0}% — der Puls ist im Verlauf spürbar stärker gestiegen als das Tempo es erklärt. Kann auf zu wenig aerobe Basis, Hitze oder unzureichende Flüssigkeitszufuhr hindeuten."
+                : $"Kardiales Driften: {drift:+0.0;-0.0;0.0}% — unauffällig, im normalen Bereich für einen langen Lauf.";
+            sb.AppendLine($"_{driftNote}_");
+            sb.AppendLine();
+        }
     }
 
     // ---- Personal bests ------------------------------------------------------

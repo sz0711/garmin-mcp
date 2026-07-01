@@ -232,8 +232,9 @@ The dashboard renders, top to bottom:
   workout** (steps + target pace), and **training pace zones** derived from race predictions.
 - **Pacing analysis** for the most recent long run (≥ 15 km, within the last 10 days): a
   grade-adjusted first-half-vs-second-half verdict — negative split, even, or positive split
-  ("fade", the most common marathon pacing mistake) — computed from lap splits (one extra API
-  call, only for that single run, not the whole activity window).
+  ("fade", the most common marathon pacing mistake) — plus **aerobic decoupling** (heart-rate
+  drift relative to pace, a hint of inadequate aerobic base, heat, or dehydration), both computed
+  from lap splits (one extra API call, only for that single run, not the whole activity window).
 - **Weekly overview & review** (this week vs last week, WHO intensity-minutes goal, plan
   adherence, plus a Monday LLM weekly recap/outlook), **4-week trend digest** (VO₂max, RHR,
   HRV, sleep score, blood oxygen, fitness, weight, body fat, marathon prediction with deltas),
