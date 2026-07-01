@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Garmin.Connect.Models;
 using GarminMcp.Core.Coaching;
 using GarminMcp.Core.Metrics;
@@ -52,6 +53,9 @@ public static class ReportBuilder
                 m.Calories = Pos((long)Math.Round(st.TotalKilocalories));
                 // Garmin/WHO intensity minutes count vigorous minutes double (75 min vigorous = 150 IM).
                 m.IntensityMinutes = (int)(st.ModerateIntensityMinutes + 2 * st.VigorousIntensityMinutes);
+                // Pulse-ox (blood oxygen) — object-typed in the library (absent on devices without the sensor).
+                m.SpO2Avg = ClampPct(AsInt(st.AverageSpo2));
+                m.SpO2Low = ClampPct(AsInt(st.LowestSpo2));
             }
             catch
             {
@@ -72,6 +76,7 @@ public static class ReportBuilder
                     m.SleepLightMin = Minutes(dto.LightSleepSeconds);
                     m.SleepRemMin = Minutes(dto.RemSleepSeconds);
                     m.SleepAwakeMin = Minutes(dto.AwakeSleepSeconds);
+                    m.SleepRespirationRate = dto.AverageRespirationValue is > 0 and < 60 ? Math.Round(dto.AverageRespirationValue, 1) : null;
                     if (dto.SleepStartTimestampLocal > 0)
                     {
                         var local = DateTimeOffset.FromUnixTimeMilliseconds(dto.SleepStartTimestampLocal).UtcDateTime;
@@ -98,22 +103,32 @@ public static class ReportBuilder
         try
         {
             var activities = await service.GetActivitiesByDateAsync(Iso(start), Iso(today), null, cancellationToken);
-            report.Activities = activities.Select(a => new ActivitySummary
-            {
-                Id = a.ActivityId,
-                Date = a.StartTimeLocal.ToString("yyyy-MM-dd"),
-                Name = a.ActivityName,
-                Type = a.ActivityType?.TypeKey,
-                DistanceKm = a.Distance > 0 ? Math.Round(a.Distance / 1000.0, 2) : null,
-                DurationMin = a.Duration > 0 ? Math.Round(a.Duration / 60.0, 1) : null,
-                ElevationGainM = a.ElevationGain > 0 ? Math.Round(a.ElevationGain, 0) : null,
-                Calories = Pos((long)Math.Round(a.Calories)),
-                AverageHr = Pos((long)Math.Round(a.AverageHr)),
-            }).ToList();
+            report.Activities = activities.Select(MapActivity).ToList();
         }
         catch
         {
-            // no activities in range
+            // The bulk range fetch failed — most likely because ONE activity in the window has a
+            // sensor field the library types as a non-nullable double (running dynamics, training
+            // effect) but Garmin actually returned JSON null for (common for non-running or
+            // manually-logged activities). System.Text.Json deserializes arrays atomically, so one
+            // bad activity fails the WHOLE range. Fall back to fetching day by day so a single
+            // unparseable day only costs that day, not the entire rolling window.
+            var collected = new List<ActivitySummary>();
+            for (var i = 0; i < days; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var dayKey = Iso(start.AddDays(i));
+                try
+                {
+                    var dayActivities = await service.GetActivitiesByDateAsync(dayKey, dayKey, null, cancellationToken);
+                    collected.AddRange(dayActivities.Select(MapActivity));
+                }
+                catch
+                {
+                    // this specific day is unrecoverable (still fails per-day) — skip it, keep the rest
+                }
+            }
+            report.Activities = collected;
         }
 
         // --- Coaching (best-effort; never aborts the report) ---
@@ -164,6 +179,22 @@ public static class ReportBuilder
             catch
             {
                 // weight unavailable — nutrition falls back to calorie-based macros
+            }
+
+            try
+            {
+                var comp = await service.GetBodyCompositionAsync(Iso(start), Iso(today), cancellationToken);
+                foreach (var s in comp.DateWeightList ?? Array.Empty<GarminDateWeight>())
+                {
+                    if (s.BodyFat is not (> 0 and < 70)) continue; // plausible body-fat range only
+                    var dayKey = s.CalendarDate.ToString("yyyy-MM-dd");
+                    var dd = report.Days.FirstOrDefault(d => d.Date == dayKey);
+                    if (dd is not null) dd.BodyFatPercent = Math.Round(s.BodyFat, 1);
+                }
+            }
+            catch
+            {
+                // no smart scale / body composition unavailable — skip
             }
 
             var plan = await TrainingPlanReader.BuildAsync(service, today, cancellationToken);
@@ -266,6 +297,68 @@ public static class ReportBuilder
     private static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd");
     private static int? Pos(long v) => v > 0 ? (int)v : null;
     private static int? Minutes(long seconds) => seconds > 0 ? (int)Math.Round(seconds / 60.0) : null;
+
+    // Several library models type sparsely-populated fields (sensor not present on every device) as
+    // `object`, which System.Text.Json deserializes into a boxed JsonElement rather than a concrete type.
+    private static int? AsInt(object? o) => o switch
+    {
+        null => null,
+        JsonElement je when je.ValueKind == JsonValueKind.Number => je.TryGetInt32(out var i) ? i : (int)Math.Round(je.GetDouble()),
+        int i => i,
+        long l => (int)l,
+        double d => (int)Math.Round(d),
+        _ => null,
+    };
+
+    private static string? AsString(object? o) => o switch
+    {
+        null => null,
+        JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+        string s => s,
+        _ => null,
+    };
+
+    // A blood-oxygen reading below ~80% overnight is virtually always a motion/perfusion sensor
+    // artifact rather than a genuine measurement (severe hypoxemia at rest is a medical emergency,
+    // not a quiet data point) — narrower than a bare percentage range, consistent with the
+    // plausibility narrowing already applied to respiration rate below.
+    private static int? ClampPct(int? v) => v is int i && i is >= 80 and <= 100 ? i : null;
+    private static double? InRange(double v, double lo, double hi) => v >= lo && v <= hi ? Math.Round(v, 1) : null;
+
+    private static ActivitySummary MapActivity(GarminActivity a)
+    {
+        var isRun = (a.ActivityType?.TypeKey ?? "").Contains("run", StringComparison.OrdinalIgnoreCase);
+        return new ActivitySummary
+        {
+            Id = a.ActivityId,
+            Date = a.StartTimeLocal.ToString("yyyy-MM-dd"),
+            Name = a.ActivityName,
+            Type = a.ActivityType?.TypeKey,
+            DistanceKm = a.Distance > 0 ? Math.Round(a.Distance / 1000.0, 2) : null,
+            DurationMin = a.Duration > 0 ? Math.Round(a.Duration / 60.0, 1) : null,
+            ElevationGainM = a.ElevationGain > 0 ? Math.Round(a.ElevationGain, 0) : null,
+            Calories = Pos((long)Math.Round(a.Calories)),
+            AverageHr = Pos((long)Math.Round(a.AverageHr)),
+            // Running dynamics: only meaningful (and only populated by Garmin) for run-type activities.
+            CadenceSpm = isRun ? InRange(a.AverageRunningCadenceInStepsPerMinute, 120, 220) : null,
+            GroundContactTimeMs = isRun ? InRange(a.AvgGroundContactTime, 150, 400) : null,
+            VerticalOscillationCm = isRun ? InRange(a.AvgVerticalOscillation, 3, 20) : null,
+            StrideLengthCm = isRun ? InRange(a.AvgStrideLength, 50, 250) : null,
+            AerobicEffect = InRange(a.AerobicTrainingEffect, 0, 5),
+            AnaerobicEffect = InRange(a.AnaerobicTrainingEffect, 0, 5),
+            // Stored raw (like ActivitySummary.Type) — MarkdownRenderer.EffectLabelDe translates it for
+            // display, mirroring how SportDe() translates the raw sport-type key only at render time.
+            EffectLabel = CleanRawLabel(AsString(a.TrainingEffectLabel)),
+        };
+    }
+
+    private static string? CleanRawLabel(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var t = s.Trim();
+        return t.Equals("NONE", StringComparison.OrdinalIgnoreCase) || t.StartsWith("NONE_", StringComparison.OrdinalIgnoreCase)
+            ? null : t;
+    }
 
     private static bool InWeek(string date, DateOnly start, DateOnly end) =>
         DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)

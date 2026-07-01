@@ -212,4 +212,93 @@ public class CoachingFeaturesTests
         Assert.Single(alerts);
         Assert.Equal(AlertLevel.Good, alerts[0].Level);
     }
+
+    [Fact]
+    public void AlertEngine_FlagsLowSpO2()
+    {
+        var days = new List<DayMetrics>();
+        for (var i = 0; i < 3; i++)
+            days.Add(new DayMetrics { Date = Today.AddDays(-i).ToString("yyyy-MM-dd"), SpO2Avg = 88 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today);
+
+        Assert.Contains(alerts, a => a.Title.Contains("Sauerstoffsättigung") && a.Level == AlertLevel.Red);
+    }
+
+    [Fact]
+    public void AlertEngine_NoSpO2AlertWhenNormal()
+    {
+        var days = new List<DayMetrics>();
+        for (var i = 0; i < 3; i++)
+            days.Add(new DayMetrics { Date = Today.AddDays(-i).ToString("yyyy-MM-dd"), SpO2Avg = 97 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Sauerstoffsättigung"));
+    }
+
+    [Fact]
+    public void AlertEngine_FlagsRunningEconomyDecline()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        // 3 most recent runs at a noticeably lower cadence than the 6 runs before them, all at the
+        // same pace (8 km / 48 min = 6:00/km) so the pace-similarity gate doesn't suppress the alert.
+        for (var i = 0; i < 3; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", CadenceSpm = 168, DistanceKm = 8, DurationMin = 48 });
+        for (var i = 3; i < 9; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", CadenceSpm = 178, DistanceKm = 8, DurationMin = 48 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.Contains(alerts, a => a.Title.Contains("Laufökonomie"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoRunningEconomyAlertWhenCadenceStable()
+    {
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 9; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", CadenceSpm = 176, DistanceKm = 8, DurationMin = 48 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Laufökonomie"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoRunningEconomyAlertWhenPaceDiffers()
+    {
+        // Same cadence drop as the "decline" test, but the recent runs are a much faster tempo
+        // block — the pace-similarity gate should suppress the alert rather than confusing a
+        // training-mix change with fatigue-driven form breakdown.
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 3; i++) // tempo: 8 km / 36 min = 4:30/km
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", CadenceSpm = 168, DistanceKm = 8, DurationMin = 36 });
+        for (var i = 3; i < 9; i++) // easy: 8 km / 48 min = 6:00/km
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-i * 2).ToString("yyyy-MM-dd"), Type = "running", CadenceSpm = 178, DistanceKm = 8, DurationMin = 48 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Laufökonomie"));
+    }
+
+    [Fact]
+    public void AlertEngine_NoRunningEconomyAlertWhenRunsAreStale()
+    {
+        // Same cadence drop, but the most recent qualifying run is 20 days old — too stale to
+        // treat as a current signal.
+        var days = new List<DayMetrics> { new() { Date = Today.ToString("yyyy-MM-dd") } };
+        var acts = new List<ActivitySummary>();
+        for (var i = 0; i < 3; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-20 - i * 2).ToString("yyyy-MM-dd"), Type = "running", CadenceSpm = 168, DistanceKm = 8, DurationMin = 48 });
+        for (var i = 3; i < 9; i++)
+            acts.Add(new ActivitySummary { Id = i + 1, Date = Today.AddDays(-20 - i * 2).ToString("yyyy-MM-dd"), Type = "running", CadenceSpm = 178, DistanceKm = 8, DurationMin = 48 });
+
+        var alerts = AlertEngine.Evaluate(days, null, Today, acts);
+
+        Assert.DoesNotContain(alerts, a => a.Title.Contains("Laufökonomie"));
+    }
 }

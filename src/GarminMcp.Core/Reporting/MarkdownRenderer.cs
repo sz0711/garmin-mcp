@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using GarminMcp.Core.Coaching;
 
@@ -298,12 +299,20 @@ public static class MarkdownRenderer
         AvgRow("❤️ Ruhepuls", d => d.RestingHeartRate, " bpm", lowerBetter: true);
         AvgRow("💓 HRV", d => d.HrvLastNight, " ms", lowerBetter: false);
         AvgRow("😴 Schlaf-Score", d => d.SleepScore, "", lowerBetter: false);
+        AvgRow("🫁 SpO₂", d => d.SpO2Avg, " %", lowerBetter: false);
 
         var wCur = AvgRange(report.Days, rStart, rEnd, d => d.WeightKg);
         if (wCur is double wc)
         {
             var wPast = AvgRange(report.Days, pStart, pEnd, d => d.WeightKg);
             rows.Add($"| ⚖️ Gewicht | {wc.ToString("0.0")} kg | {TrendCell(wCur, wPast, null, v => v.ToString("0.0"))} |");
+        }
+
+        var bfCur = AvgRange(report.Days, rStart, rEnd, d => d.BodyFatPercent);
+        if (bfCur is double bf)
+        {
+            var bfPast = AvgRange(report.Days, pStart, pEnd, d => d.BodyFatPercent);
+            rows.Add($"| 🧬 Körperfett | {bf.ToString("0.0")} % | {TrendCell(bfCur, bfPast, null, v => v.ToString("0.0"))} |");
         }
 
         var (vF, vL) = FirstLast(report.Days, wStart, today, d => d.Vo2Max);
@@ -398,6 +407,13 @@ public static class MarkdownRenderer
         sb.AppendLine($"- 😴 Schlaf: {Val(latest.SleepHours, "h")}{(latest.SleepScore is int ss ? $" · Score {ss}/100" : "")}");
         if (latest.SleepDeepMin is not null || latest.SleepLightMin is not null || latest.SleepRemMin is not null)
             sb.AppendLine($"  - 🛌 Phasen: Tief {Dur(latest.SleepDeepMin)} · Leicht {Dur(latest.SleepLightMin)} · REM {Dur(latest.SleepRemMin)} · Wach {Dur(latest.SleepAwakeMin)}");
+        if (latest.SleepRespirationRate is not null || latest.SpO2Avg is not null)
+        {
+            var bits = new List<string>();
+            if (latest.SleepRespirationRate is double r) bits.Add($"Atemfrequenz Ø {r:0.0}/min");
+            if (latest.SpO2Avg is int sa) bits.Add($"SpO₂ Ø {sa} %{(latest.SpO2Low is int sl ? $" (min {sl} %)" : "")}");
+            sb.AppendLine($"  - 🫁 {string.Join(" · ", bits)}");
+        }
         sb.AppendLine($"- 🔋 Body Battery: {(latest.BodyBatteryLow is null && latest.BodyBatteryHigh is null ? "–" : $"{latest.BodyBatteryLow?.ToString() ?? "?"} → {latest.BodyBatteryHigh?.ToString() ?? "?"}")}");
         sb.AppendLine($"- 😰 Stress (Ø): {Val(latest.StressAvg, "")}");
         sb.AppendLine($"- 👟 Schritte: {Val(latest.Steps, "")}");
@@ -443,23 +459,59 @@ public static class MarkdownRenderer
     }
 
     // ---- Charts (PNG images; the GitHub mobile app does not render Mermaid) ----------
+    // Grouped into collapsible <details> by theme: with ~20 charts, one giant flat gallery
+    // was the longest, least scannable part of the phone view. Group order is fixed (not
+    // discovery order) so the layout stays stable as charts are added/removed over time.
+    private static readonly string[] ChartGroupOrder =
+        { "🏋️ Form & Belastung", "❤️ Herz & Erholung", "😴 Schlaf", "📊 Training & Sonstiges" };
+
+    private static string ChartGroup(string file) => IdOf(file) switch
+    {
+        "form" or "tsb" or "heatmap" or "acwr" or "vo2max" or "cadence" => "🏋️ Form & Belastung",
+        "readiness" or "rhr" or "hrv" or "bodybattery" or "stress" or "spo2" => "❤️ Herz & Erholung",
+        "sleep" or "sleepstages" or "sleepscore" or "bedtime" => "😴 Schlaf",
+        _ => "📊 Training & Sonstiges", // weeklykm, typesplit, marathon, steps, weight, bodyfat, …
+    };
+
+    private static string IdOf(string file)
+    {
+        var name = file[(file.LastIndexOf('/') + 1)..];
+        return name.EndsWith(".png", StringComparison.Ordinal) ? name[..^4] : name;
+    }
+
     private static void AppendChartImages(StringBuilder sb, IReadOnlyList<ChartRef>? charts)
     {
         var gallery = charts?.Where(c => !c.File.EndsWith("hero.png", StringComparison.Ordinal)).ToList();
         if (gallery is null || gallery.Count == 0) return;
+
         sb.AppendLine("## 📈 Entwicklung");
         sb.AppendLine();
-        foreach (var c in gallery)
+        sb.AppendLine("_Nach Themen gruppiert – zum Öffnen antippen._");
+        sb.AppendLine();
+
+        var byGroup = gallery.ToLookup(c => ChartGroup(c.File));
+        foreach (var groupName in ChartGroupOrder)
         {
-            sb.AppendLine($"**{c.Title}**");
+            var items = byGroup[groupName].ToList();
+            if (items.Count == 0) continue;
+
+            sb.AppendLine("<details>");
+            sb.AppendLine($"<summary>{groupName} ({items.Count})</summary>");
             sb.AppendLine();
-            sb.AppendLine($"![{c.Title}]({c.File})");
-            sb.AppendLine();
-            if (!string.IsNullOrWhiteSpace(c.Caption))
+            foreach (var c in items)
             {
-                sb.AppendLine($"> {c.Caption}");
+                sb.AppendLine($"**{c.Title}**");
                 sb.AppendLine();
+                sb.AppendLine($"![{c.Title}]({c.File})");
+                sb.AppendLine();
+                if (!string.IsNullOrWhiteSpace(c.Caption))
+                {
+                    sb.AppendLine($"> {c.Caption}");
+                    sb.AppendLine();
+                }
             }
+            sb.AppendLine("</details>");
+            sb.AppendLine();
         }
     }
 
@@ -500,8 +552,24 @@ public static class MarkdownRenderer
             if (a.ElevationGainM is not null) parts.Add($"{a.ElevationGainM:0} hm");
             if (a.Calories is not null) parts.Add($"{a.Calories} kcal");
             if (a.AverageHr is not null) parts.Add($"ø {a.AverageHr} bpm");
+            if (a.CadenceSpm is double cad) parts.Add($"{cad:0} spm");
+            if (a.GroundContactTimeMs is double gct) parts.Add($"GCT {gct:0} ms");
+            if (a.VerticalOscillationCm is double vo) parts.Add($"VO {vo:0.#} cm");
+            if (a.StrideLengthCm is double sl) parts.Add($"{sl:0} cm Schrittlänge");
             var detail = parts.Count > 0 ? " — " + string.Join(", ", parts) : "";
             sb.AppendLine($"- **{a.Date}** {a.Name ?? SportDe(a.Type)} _({SportDe(a.Type)})_{detail}");
+
+            var effectBits = new List<string>();
+            if (a.AerobicEffect is double ae && ae > 0) effectBits.Add($"Aerob {ae:0.0}");
+            if (a.AnaerobicEffect is double an && an > 0) effectBits.Add($"Anaerob {an:0.0}");
+            var effectLabelDe = EffectLabelDe(a.EffectLabel);
+            if (effectBits.Count > 0 || effectLabelDe is not null)
+            {
+                var text = effectBits.Count > 0
+                    ? string.Join(" · ", effectBits) + (effectLabelDe is not null ? $" ({effectLabelDe})" : "")
+                    : effectLabelDe;
+                sb.AppendLine($"  - 🎯 Trainingseffekt: {text}");
+            }
         }
         sb.AppendLine();
         sb.AppendLine("</details>");
@@ -567,7 +635,17 @@ public static class MarkdownRenderer
         if (c.SleepConsistencyMin is double scm)
             sb.AppendLine($"- 🛏️ Schlaf-Konsistenz: ±{scm:0} min (Zubettgeh-Zeit)");
 
-        if (c.RaceDate is not null)
+        // The marathon prognosis + goal verdict has a dedicated home (🏁 Race-Countdown when close to
+        // race day AND a prediction is actually available that day, and usually the 📈 Trends digest
+        // too, once ≥2 data points exist) — only repeat it here if the countdown won't show it, so it
+        // isn't tripled on every render, but never let the goal silently vanish on a day Garmin's race
+        // prediction happens to be unavailable (checking MarathonSeconds, not just the day window).
+        var raceCountdownWillShow = c.DaysToRace is >= 0 and <= 28 && c.Race?.MarathonSeconds is not null;
+        // TrainingPlanReader only ever nulls DaysToRace when RaceDate refers to a race already in the
+        // past (it falls back to the most recent past race once no upcoming one exists) — don't show a
+        // forward-looking "on track for goal" verdict for an event that has already happened.
+        var isPastRace = c.RaceDate is not null && c.DaysToRace is null;
+        if (!isPastRace && !raceCountdownWillShow && c.RaceDate is not null)
         {
             var racePart = $"🏁 Rennen: {c.RaceDate}" + (c.DaysToRace is int d ? $" (in {d} Tagen)" : "");
             if (c.Race?.MarathonSeconds is int ms) racePart += $" · Marathon-Prognose {FormatTime(ms)}";
@@ -575,7 +653,7 @@ public static class MarkdownRenderer
             racePart += GoalVerdict(c);
             sb.AppendLine($"- {racePart}");
         }
-        else if (c.Race?.MarathonSeconds is int ms2)
+        else if (!raceCountdownWillShow && c.Race?.MarathonSeconds is int ms2)
         {
             sb.AppendLine($"- 🏁 Marathon-Prognose {FormatTime(ms2)}{(string.IsNullOrWhiteSpace(c.Goal) ? "" : $" · Ziel {c.Goal}")}{GoalVerdict(c)}");
         }
@@ -687,6 +765,33 @@ public static class MarkdownRenderer
             "other" or "andere" => "Sonstiges",
             _ => char.ToUpperInvariant(type[0]) + type[1..].Replace('_', ' '),
         };
+    }
+
+    /// <summary>German label for Garmin's raw per-activity training-effect classification (e.g.
+    /// "TEMPO_TRAINING_EFFECT_LABEL" → "Tempo"). Garmin's exact label set isn't publicly documented,
+    /// so this matches on well-known keywords (mirroring CoachEngine.Humanize's approach for training
+    /// status) and degrades to a readable phrase — never raw English — for anything unrecognized.</summary>
+    internal static string? EffectLabelDe(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var s = raw.ToUpperInvariant();
+        if (s.Contains("RECOVERY")) return "Erholung";
+        if (s.Contains("THRESHOLD")) return "Schwelle";
+        if (s.Contains("ANAEROBIC")) return "Anaerobe Kapazität";
+        if (s.Contains("VO2MAX") || s.Contains("VO2_MAX")) return "VO₂max";
+        if (s.Contains("TEMPO")) return "Tempo";
+        if (s.Contains("SPRINT")) return "Sprint";
+        if (s.Contains("SPEED")) return "Speed";
+        if (s.Contains("BASE") || s.Contains("AEROBIC")) return "Grundlagenausdauer";
+        if (s.Contains("MAINTAINING") || s.Contains("MAINTENANCE")) return "Erhaltend";
+        if (s.Contains("OVERREACHING") || s.Contains("OVERLOAD")) return "Übertraining";
+        if (s.Contains("UNKNOWN") || s.Contains("NONE")) return null;
+
+        // Unrecognized label: strip Garmin's usual suffix and title-case rather than showing nothing.
+        var stripped = raw.Replace("_TRAINING_EFFECT_LABEL", "", StringComparison.OrdinalIgnoreCase)
+                           .Replace("_EFFECT_LABEL", "", StringComparison.OrdinalIgnoreCase)
+                           .Replace('_', ' ').Trim().ToLowerInvariant();
+        return stripped.Length == 0 ? null : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(stripped);
     }
 
     private static string Short(string isoDate) => isoDate.Length >= 10 ? isoDate[5..] : isoDate;

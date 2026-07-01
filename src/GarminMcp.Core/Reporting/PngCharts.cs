@@ -39,6 +39,9 @@ public static class PngCharts
         ["bedtime"] = "Zubettgeh-Uhrzeit über die Zeit. Konstante Zeiten (flache Linie) stabilisieren deinen Rhythmus und verbessern Erholung sowie HRV; stark schwankende Zeiten stören den Schlaf.",
         ["weeklykm"] = "Wöchentliche Laufkilometer als Balken. Achte auf gleichmäßigen Aufbau (Faustregel: max. ca. 10 % mehr pro Woche) mit regelmäßigen Entlastungswochen. Zu steile Sprünge erhöhen das Verletzungsrisiko.",
         ["typesplit"] = "Wochenkilometer aufgeteilt nach Sportart. Zeigt, wie ausgewogen dein Training auf Laufen, Rad und Co. verteilt ist – ein hoher Laufanteil bedeutet viel Laufumfang im Verhältnis zu anderen Sportarten.",
+        ["cadence"] = "Schrittfrequenz (Kadenz) deiner letzten Läufe. Ein stabiler, für dich passender Wert (meist 165–185 spm) spricht für eine effiziente Lauftechnik; ein Abfall über mehrere Läufe kann Ermüdung oder nachlassende Form anzeigen.",
+        ["spo2"] = "Sauerstoffsättigung im Blut (SpO₂, nachts gemessen). Normal sind meist 94–100 %. Niedrigere Werte können auf Höhenlage, verstopfte Atemwege oder unruhigen Schlaf hindeuten.",
+        ["bodyfat"] = "Körperfettanteil über die Zeit (von einer smarten Waage). Für Marathonläufer zählt der langfristige Trend im Zusammenspiel mit dem Gewicht – schnelle Ausschläge sind meist Messungenauigkeit, kein echter Effekt.",
     };
 
     public static List<ChartRef> Generate(GarminReport report, DateOnly today, string outDir)
@@ -125,6 +128,29 @@ public static class PngCharts
         BarChart(Add, "stress", "😰 Stress (Ø)", labels, days.Select(d => d.StressAvg is int v ? (double?)v : null).ToList(), "#ff375f");
         LineChart(Add, "vo2max", "🫁 VO₂max", labels, days.Select(d => d.Vo2Max).ToList(), "#bf5af2");
         LineChart(Add, "weight", "⚖️ Gewicht (kg)", labels, days.Select(d => d.WeightKg).ToList(), "#64d2ff");
+        LineChart(Add, "bodyfat", "⚖️ Körperfett (%)", labels, days.Select(d => d.BodyFatPercent).ToList(), "#ff9500");
+
+        var spo2 = days.Select(d => d.SpO2Avg is int v ? (double?)v : null).ToList();
+        if (spo2.Count(x => x.HasValue) >= 2)
+            Add("spo2", "🫁 Sauerstoffsättigung (SpO₂, %)", f => Draw(f, labels, new[] { new Series("SpO₂", "#5ac8fa", spo2, false) }));
+
+        // Running cadence trend across recent runs (x-axis = run dates, not calendar days — a
+        // recreational runner may not run daily, so a calendar-day series would be mostly gaps).
+        var cadenceRuns = report.Activities
+            .Where(a => a.CadenceSpm.HasValue && DateOnly.TryParse(a.Date, out var cd) && cd <= today)
+            .OrderBy(a => a.Date, StringComparer.Ordinal)
+            .TakeLast(20)
+            .ToList();
+        if (cadenceRuns.Count >= 2)
+        {
+            var cLabels = cadenceRuns.Select(a => Short(a.Date)).ToList();
+            var cValues = cadenceRuns.Select(a => (double?)a.CadenceSpm!.Value).ToList();
+            Add("cadence", "🦶 Kadenz (spm, letzte Läufe)", f => Draw(f, cLabels, new[]
+            {
+                new Series("Kadenz", "#34c759", cValues, false),
+                new Series("Ø5L", "#9be8ac", Rolling5(cValues), false),
+            }));
+        }
 
         // Marathon-prediction trend with the goal time as a reference line.
         var marathon = days.Select(d => d.MarathonSeconds is int s ? (double?)Math.Round(s / 60.0, 1) : null).ToList();
@@ -616,6 +642,22 @@ public static class PngCharts
         {
             var window = new List<double>();
             for (var j = Math.Max(0, i - 6); j <= i; j++)
+                if (values[j] is double v) window.Add(v);
+            result.Add(window.Count > 0 ? Math.Round(window.Average(), 1) : null);
+        }
+        return result;
+    }
+
+    // Same rolling-average pattern as Rolling7, but a 5-wide window over an index series of RUNS
+    // (not calendar days) — a recreational runner's runs are sparser than daily, so a 7-day window
+    // would span many weeks; 5 runs is a more meaningful "recent form" smoothing horizon.
+    private static List<double?> Rolling5(IReadOnlyList<double?> values)
+    {
+        var result = new List<double?>(values.Count);
+        for (var i = 0; i < values.Count; i++)
+        {
+            var window = new List<double>();
+            for (var j = Math.Max(0, i - 4); j <= i; j++)
                 if (values[j] is double v) window.Add(v);
             result.Add(window.Count > 0 ? Math.Round(window.Average(), 1) : null);
         }

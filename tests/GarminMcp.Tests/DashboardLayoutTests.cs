@@ -76,6 +76,26 @@ public class DashboardLayoutTests
         Assert.Contains("Schlaf-Score", md);              // sleep score in trends
         Assert.Contains("/100", md);                       // sleep score in latest day
 
+        // Newly extracted data (running dynamics, pulse-ox, body composition)
+        Assert.Contains("charts/cadence.png", md);        // running cadence trend chart
+        Assert.Contains("charts/spo2.png", md);           // blood-oxygen chart
+        Assert.Contains("charts/bodyfat.png", md);        // body-fat trend chart
+        Assert.Contains("spm", md);                       // cadence surfaced in the activity list
+        Assert.Contains("GCT", md);                       // ground contact time surfaced in the activity list
+        Assert.Contains("cm Schrittlänge", md);           // stride length surfaced in the activity list
+        Assert.Contains("🎯 Trainingseffekt", md);         // Garmin training-effect line
+        Assert.Contains("(Grundlagenausdauer)", md);      // raw "BASE_TRAINING_EFFECT_LABEL" translated to German
+        Assert.Contains("(Tempo)", md);                   // raw "TEMPO_TRAINING_EFFECT_LABEL" translated to German
+        Assert.DoesNotContain("TRAINING_EFFECT_LABEL", md); // no raw Garmin slug ever leaks into the report
+        Assert.Contains("Atemfrequenz", md);              // sleep respiration rate ("Letzter Tag")
+        Assert.Contains("SpO₂", md);                      // blood-oxygen reading ("Letzter Tag")
+        Assert.Contains("🧬 Körperfett", md);              // body-fat trend row
+
+        // Grouped, collapsible chart gallery (designer pass: ~20 charts is too long to show flat)
+        Assert.Contains("🏋️ Form & Belastung", md);
+        Assert.Contains("❤️ Herz & Erholung", md);
+        Assert.Contains("📊 Training & Sonstiges", md);
+
         // PNG charts were rendered and are non-empty (verifies SkiaSharp rendering).
         Assert.NotEmpty(charts);
         Assert.All(charts, c => Assert.True(new FileInfo(Path.Combine(tmp, c.File)).Length > 0));
@@ -107,7 +127,11 @@ public class DashboardLayoutTests
                 IntensityMinutes = (i % 3 == 0) ? 45 : 10,
                 BedtimeHour = Math.Round(23.0 + rng[i] * 0.15, 2),
                 WeightKg = Math.Round(71.5 - i * 0.04, 1),
+                BodyFatPercent = Math.Round(15.0 - i * 0.03, 1),
                 SleepScore = 78 + rng[i],
+                SleepRespirationRate = Math.Round(14.0 + rng[i] * 0.2, 1),
+                SpO2Avg = 96 + rng[i], // 94-98 range across the sample — normal, never triggers the SpO2 alert
+                SpO2Low = 92,
             });
         }
         // accumulated metrics for the most recent days
@@ -119,10 +143,14 @@ public class DashboardLayoutTests
 
         var activities = new List<ActivitySummary>
         {
-            new() { Id = 1, Date = "2026-06-28", Name = "Long Run", Type = "running", DistanceKm = 18, DurationMin = 105, ElevationGainM = 180, Calories = 1200, AverageHr = 150 },
-            new() { Id = 2, Date = "2026-06-30", Name = "Tempo", Type = "running", DistanceKm = 10, DurationMin = 52, ElevationGainM = 60, Calories = 700, AverageHr = 162 },
-            new() { Id = 3, Date = "2026-06-26", Name = "Easy", Type = "running", DistanceKm = 8, DurationMin = 45, ElevationGainM = 40, Calories = 520, AverageHr = 138 },
-            new() { Id = 4, Date = "2026-06-22", Name = "Long Run", Type = "running", DistanceKm = 16, DurationMin = 95, ElevationGainM = 150, Calories = 1050, AverageHr = 148 },
+            new() { Id = 1, Date = "2026-06-28", Name = "Long Run", Type = "running", DistanceKm = 18, DurationMin = 105, ElevationGainM = 180, Calories = 1200, AverageHr = 150,
+                CadenceSpm = 172, GroundContactTimeMs = 255, VerticalOscillationCm = 9.1, StrideLengthCm = 112, AerobicEffect = 3.8, AnaerobicEffect = 0.4, EffectLabel = "BASE_TRAINING_EFFECT_LABEL" },
+            new() { Id = 2, Date = "2026-06-30", Name = "Tempo", Type = "running", DistanceKm = 10, DurationMin = 52, ElevationGainM = 60, Calories = 700, AverageHr = 162,
+                CadenceSpm = 179, GroundContactTimeMs = 238, VerticalOscillationCm = 8.4, StrideLengthCm = 121, AerobicEffect = 3.2, AnaerobicEffect = 1.6, EffectLabel = "TEMPO_TRAINING_EFFECT_LABEL" },
+            new() { Id = 3, Date = "2026-06-26", Name = "Easy", Type = "running", DistanceKm = 8, DurationMin = 45, ElevationGainM = 40, Calories = 520, AverageHr = 138,
+                CadenceSpm = 175, GroundContactTimeMs = 248, VerticalOscillationCm = 8.8, StrideLengthCm = 108 },
+            new() { Id = 4, Date = "2026-06-22", Name = "Long Run", Type = "running", DistanceKm = 16, DurationMin = 95, ElevationGainM = 150, Calories = 1050, AverageHr = 148,
+                CadenceSpm = 173, GroundContactTimeMs = 252, VerticalOscillationCm = 9.0, StrideLengthCm = 110 },
         };
 
         var status = new TrainingStatusInfo { StatusPhrase = "PRODUCTIVE_1", Vo2Max = 54, Acwr = 1.1 };

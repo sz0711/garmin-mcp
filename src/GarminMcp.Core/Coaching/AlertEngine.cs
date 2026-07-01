@@ -121,6 +121,52 @@ public static class AlertEngine
                     Detail = $"~{debt:0} h Defizit über {weekSleep.Count} Tage (Ø {avg:0.0} h). Auf konstante, ausreichende Nächte achten." });
         }
 
+        // --- Pulse-ox (SpO2) low — possible altitude, congestion, or sleep-disordered breathing ---
+        var recentSpo2 = recent.Select(d => d.SpO2Avg).Where(v => v.HasValue).Select(v => (double)v!.Value).ToList();
+        if (recentSpo2.Count >= 2)
+        {
+            checksRun++;
+            var avgSpo2 = recentSpo2.Average();
+            if (avgSpo2 < 90)
+                alerts.Add(new HealthAlert { Level = AlertLevel.Red, Icon = "🫁", Title = "Sauerstoffsättigung niedrig",
+                    Detail = $"Ø der letzten {recentSpo2.Count} Tage {avgSpo2:0} % SpO₂ – deutlich unter dem üblichen Bereich. Falls das anhält, ärztlich abklären lassen (z. B. Schlafapnoe, Atemwegsinfekt)." });
+            else if (avgSpo2 < 94)
+                alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "🫁", Title = "Sauerstoffsättigung leicht erniedrigt",
+                    Detail = $"Ø der letzten Tage {avgSpo2:0} % SpO₂ – kann auf Höhenlage, Verstopfung oder unruhigen Schlaf hindeuten. Beobachten." });
+        }
+
+        // --- Running-economy trend: a sustained cadence drop at a SIMILAR pace can signal fatigue.
+        // Cadence is strongly speed-dependent, so comparing runs from different session types (e.g.
+        // easy runs vs. a tempo/interval block) would confound a training-mix change with fatigue. ---
+        if (activities is not null)
+        {
+            var runs = activities
+                .Where(a => a.CadenceSpm.HasValue && a.DistanceKm is > 0 && a.DurationMin is > 0
+                            && DateOnly.TryParse(a.Date, out var ad) && ad <= today)
+                .OrderByDescending(a => a.Date, StringComparer.Ordinal)
+                .ToList();
+            // Require the most recent qualifying run to be current — a runner who stopped running
+            // weeks ago shouldn't get a stale "form is slipping" alert from an old training block.
+            var recentEnough = runs.Count > 0 && DateOnly.TryParse(runs[0].Date, out var lastRunDate)
+                && today.DayNumber - lastRunDate.DayNumber <= 14;
+            if (recentEnough && runs.Count >= 6) // 3 recent runs + at least 3 to form a real baseline
+            {
+                checksRun++;
+                var recentRuns = runs.Take(3).ToList();
+                var baseRuns = runs.Skip(3).Take(6).ToList();
+                var recentCad = recentRuns.Average(a => a.CadenceSpm!.Value);
+                var baseCad = baseRuns.Average(a => a.CadenceSpm!.Value);
+                double PaceSecPerKm(ActivitySummary a) => a.DurationMin!.Value * 60.0 / a.DistanceKm!.Value;
+                var recentPace = recentRuns.Average(PaceSecPerKm);
+                var basePace = baseRuns.Average(PaceSecPerKm);
+                var paceSimilar = basePace > 0 && Math.Abs(recentPace - basePace) / basePace <= 0.15;
+                var drop = baseCad - recentCad;
+                if (paceSimilar && drop >= 4)
+                    alerts.Add(new HealthAlert { Level = AlertLevel.Amber, Icon = "🦶", Title = "Laufökonomie lässt nach",
+                        Detail = $"Kadenz der letzten 3 Läufe Ø {recentCad:0} spm, {drop:0} spm unter dem Schnitt der {baseRuns.Count} Läufe davor (Ø {baseCad:0} spm) bei ähnlichem Tempo. Kann Ermüdung oder Formverlust zeigen – auf Lauftechnik achten oder Erholung priorisieren." });
+            }
+        }
+
         // --- Training monotony / strain (Foster): same load every day is risky ---
         if (activities is not null)
         {

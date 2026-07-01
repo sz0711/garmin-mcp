@@ -25,6 +25,12 @@ public sealed class DayMetrics
     public double? BedtimeHour { get; set; }   // local bedtime as decimal hour, shifted to ~18–30 for continuity
     public string? BedtimeLocal { get; set; }  // "HH:mm" for display
     public double? WeightKg { get; set; }      // body weight that day (sparse — only on measurement days)
+    public double? BodyFatPercent { get; set; } // body fat % from a smart scale (sparse — only on measurement days)
+
+    // Pulse-ox (blood oxygen) and breathing rate — Garmin's overnight "Pulse Ox"/respiration sensors.
+    public int? SpO2Avg { get; set; }          // average blood-oxygen saturation (%)
+    public int? SpO2Low { get; set; }          // lowest blood-oxygen saturation (%)
+    public double? SleepRespirationRate { get; set; } // average breathing rate during sleep (breaths/min)
 
     // Accumulated single-point-per-day metrics (only fetched for "today" each run; preserved on merge).
     public double? Vo2Max { get; set; }
@@ -49,6 +55,15 @@ public sealed class ActivitySummary
     public double? ElevationGainM { get; set; }
     public int? Calories { get; set; }
     public int? AverageHr { get; set; }
+
+    // Running dynamics (only populated for running-type activities on a compatible device).
+    public double? CadenceSpm { get; set; }            // average run cadence, steps/min
+    public double? GroundContactTimeMs { get; set; }   // average ground contact time, ms
+    public double? VerticalOscillationCm { get; set; } // average vertical oscillation, cm
+    public double? StrideLengthCm { get; set; }        // average stride length, cm
+    public double? AerobicEffect { get; set; }         // Garmin Training Effect, aerobic (0.0-5.0)
+    public double? AnaerobicEffect { get; set; }       // Garmin Training Effect, anaerobic (0.0-5.0)
+    public string? EffectLabel { get; set; }           // Garmin's raw training-effect label (e.g. "TEMPO_TRAINING_EFFECT_LABEL") — MarkdownRenderer.EffectLabelDe translates it for display
 }
 
 /// <summary>An all-time personal best from Garmin (running distance/time records).</summary>
@@ -109,6 +124,10 @@ public sealed class GarminReport
                 d.MarathonSeconds ??= prev.MarathonSeconds;
                 d.ReadinessScore ??= prev.ReadinessScore;
                 d.WeightKg ??= prev.WeightKg;   // weight isn't measured daily — keep the last known
+                d.BodyFatPercent ??= prev.BodyFatPercent;
+                d.SpO2Avg ??= prev.SpO2Avg;
+                d.SpO2Low ??= prev.SpO2Low;
+                d.SleepRespirationRate ??= prev.SleepRespirationRate;
             }
             days[d.Date] = d;
         }
