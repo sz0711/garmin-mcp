@@ -131,6 +131,32 @@ public static class ReportBuilder
             report.Activities = collected;
         }
 
+        try
+        {
+            // Splits/laps require one extra API call PER activity — fetching them for every run in
+            // the window would multiply the report's call volume many times over (a real concern:
+            // excessive polling has already caused a real Garmin auth incident this project hit once).
+            // Deliberately scoped to just the single most recent qualifying long run (>= 15 km, within
+            // the last 10 days) — the run type where pacing strategy actually matters for marathon
+            // training — instead of analyzing every activity.
+            var recentLongRun = report.Activities
+                .Where(a => a.IsRun && a.DistanceKm is >= 15
+                            && DateOnly.TryParse(a.Date, out var lrd) && lrd <= today && today.DayNumber - lrd.DayNumber <= 10)
+                .OrderByDescending(a => a.Date, StringComparer.Ordinal)
+                .ThenByDescending(a => a.Id) // same-day tiebreak, matching GarminReport.Merge's activity ordering
+                .FirstOrDefault();
+            if (recentLongRun is not null)
+            {
+                var splits = await service.GetActivitySplitsAsync(recentLongRun.Id, cancellationToken);
+                report.RecentLongRunPacing = SplitAnalyzer.Analyze(splits, recentLongRun);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ReportBuilder] Activity splits fetch failed: {ex.Message}");
+            // pacing analysis is optional
+        }
+
         // --- Coaching (best-effort; never aborts the report) ---
         try
         {

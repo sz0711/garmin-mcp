@@ -98,6 +98,10 @@ public sealed class GarminReport
     public string? WeeklyInsightWeekStart { get; set; } // ISO Monday the weekly insight belongs to
     public List<HealthAlert> Alerts { get; set; } = new();        // early-warning signals
     public List<PersonalBest> PersonalBests { get; set; } = new();
+    /// <summary>First-half-vs-second-half pacing verdict for the most recent qualifying long run
+    /// (recomputed each run, like Alerts — not merged forward, since it should reflect the CURRENT
+    /// most recent long run, not a stale one from days ago).</summary>
+    public PacingAnalysis? RecentLongRunPacing { get; set; }
     public List<DayMetrics> Days { get; set; } = new();
     public List<ActivitySummary> Activities { get; set; } = new();
 
@@ -162,6 +166,7 @@ public sealed class GarminReport
             WeeklyInsight = fresh.WeeklyInsight ?? existing?.WeeklyInsight, // refreshed weekly, kept in between
             WeeklyInsightWeekStart = fresh.WeeklyInsight is not null ? fresh.WeeklyInsightWeekStart : existing?.WeeklyInsightWeekStart,
             Alerts = fresh.Alerts,                 // recomputed each run
+            RecentLongRunPacing = fresh.RecentLongRunPacing, // recomputed each run, like Alerts
             PersonalBests = fresh.PersonalBests.Count > 0 ? fresh.PersonalBests : (existing?.PersonalBests ?? new()),
             Days = days.Values.OrderByDescending(d => d.Date, StringComparer.Ordinal).ToList(),
             Activities = activities.Values.OrderByDescending(a => a.Date, StringComparer.Ordinal).ThenByDescending(a => a.Id).ToList(),

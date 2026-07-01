@@ -182,7 +182,8 @@ GET /api/garmin/training-trends
 `garmin_get_weight`, `garmin_get_hydration`, `garmin_get_activities`,
 `garmin_get_activities_by_date`, `garmin_get_activity_details`,
 `garmin_get_personal_records`, `garmin_get_gear` (registered shoes/bikes — metadata and the
-user-configured wear-reminder threshold, not actual accumulated mileage). Dates use the
+user-configured wear-reminder threshold, not actual accumulated mileage), `garmin_get_activity_splits`
+(per-lap pace/HR/cadence/elevation for one activity — pacing analysis). Dates use the
 `yyyy-MM-dd` format.
 
 **Coaching tools** (acts as a personal trainer): `garmin_daily_coaching` (readiness
@@ -229,6 +230,10 @@ The dashboard renders, top to bottom:
   no separate key), falling back to deterministic rule-based text.
 - **Race countdown** (from 28 days out, taper phase + goal verdict), **today's structured
   workout** (steps + target pace), and **training pace zones** derived from race predictions.
+- **Pacing analysis** for the most recent long run (≥ 15 km, within the last 10 days): a
+  grade-adjusted first-half-vs-second-half verdict — negative split, even, or positive split
+  ("fade", the most common marathon pacing mistake) — computed from lap splits (one extra API
+  call, only for that single run, not the whole activity window).
 - **Weekly overview & review** (this week vs last week, WHO intensity-minutes goal, plan
   adherence, plus a Monday LLM weekly recap/outlook), **4-week trend digest** (VO₂max, RHR,
   HRV, sleep score, blood oxygen, fitness, weight, body fat, marathon prediction with deltas),

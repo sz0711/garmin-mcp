@@ -140,6 +140,14 @@ public static class GarminTools
         CancellationToken cancellationToken)
         => garmin.GetActivityDetailsAsync(activityId, cancellationToken);
 
+    [McpServerTool(Name = "garmin_get_activity_splits")]
+    [Description("Get per-lap splits for a single activity (pace/speed, heart rate, cadence, elevation change per lap). Use this for within-run pacing analysis, e.g. checking whether a long run was a negative split (second half faster - the reliable marathon pacing strategy) or a positive split (second half slower - the common 'fade' mistake).")]
+    public static Task<GarminActivitySplits> GetActivitySplits(
+        IGarminService garmin,
+        [Description("Numeric Garmin activity id")] long activityId,
+        CancellationToken cancellationToken)
+        => garmin.GetActivitySplitsAsync(activityId, cancellationToken);
+
     [McpServerTool(Name = "garmin_get_personal_records")]
     [Description("Get the user's personal records (e.g. fastest 5K, longest run).")]
     public static Task<GarminPersonalRecord[]> GetPersonalRecords(IGarminService garmin, CancellationToken cancellationToken)

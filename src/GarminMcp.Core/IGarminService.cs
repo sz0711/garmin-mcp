@@ -67,4 +67,9 @@ public interface IGarminService
     /// exposes real cumulative distance per item only via a separate gear-stats endpoint this API
     /// does not cover, so it is not available here.</summary>
     Task<GarminGear[]> GetUserGearsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Per-kilometer (or per-auto-lap) splits for a single activity: pace, heart rate,
+    /// cadence and elevation change per lap. Useful for within-run pacing analysis (negative/positive
+    /// split, fade detection) that a whole-activity average can't show.</summary>
+    Task<GarminActivitySplits> GetActivitySplitsAsync(long activityId, CancellationToken cancellationToken = default);
 }

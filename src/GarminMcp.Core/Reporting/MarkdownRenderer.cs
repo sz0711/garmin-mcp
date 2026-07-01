@@ -44,6 +44,7 @@ public static class MarkdownRenderer
         AppendPaceZones(sb, report.Coaching?.Paces);
         AppendLatestDay(sb, days);
         AppendWeek(sb, report, today);
+        AppendPacingAnalysis(sb, report.RecentLongRunPacing);
         AppendWeeklyReview(sb, report, today);
         AppendTrends(sb, report, today);
         AppendSeasonBests(sb, report.PersonalBests);
@@ -376,6 +377,24 @@ public static class MarkdownRenderer
         sb.AppendLine("|---|--:|");
         foreach (var z in paces.Zones)
             sb.AppendLine($"| {z.Name} | {z.Range} |");
+        sb.AppendLine();
+    }
+
+    // ---- Pacing analysis (negative/positive split) for the most recent long run ----------------
+    private static void AppendPacingAnalysis(StringBuilder sb, PacingAnalysis? p)
+    {
+        if (p is null) return;
+        var (label, advice) = p.Verdict switch
+        {
+            SplitVerdict.Negative => ("✅ Negative Split", "Zweite Hälfte schneller als die erste — genau die Pacing-Strategie, die im Marathon am zuverlässigsten funktioniert. Weiter so."),
+            SplitVerdict.Even => ("🟢 Gleichmäßig", "Beide Hälften in etwa gleich schnell — eine solide, kontrollierte Pacing-Strategie."),
+            _ => ("⚠️ Positive Split (Fade)", "Zweite Hälfte spürbar langsamer als die erste — der häufigste Pacing-Fehler im Marathon. Beim nächsten langen Lauf bewusst konservativer starten."),
+        };
+        sb.AppendLine($"## 🏁 Pacing-Analyse: {p.ActivityName ?? "Longrun"} ({p.DistanceKm:0.#} km, {p.ActivityDate})");
+        sb.AppendLine();
+        sb.AppendLine($"**{label}** — 1. Hälfte {PaceZone.Fmt(p.FirstHalfPaceSecPerKm)}, 2. Hälfte {PaceZone.Fmt(p.SecondHalfPaceSecPerKm)} ({p.PercentDifference:+0.0;-0.0;0.0}%)");
+        sb.AppendLine();
+        sb.AppendLine($"_{advice}_");
         sb.AppendLine();
     }
 

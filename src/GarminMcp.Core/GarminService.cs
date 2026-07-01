@@ -134,6 +134,9 @@ public sealed class GarminService : IGarminService
             return await Client.GetUserGears(userId, cancellationToken) ?? Array.Empty<GarminGear>();
         }, "gear");
 
+    public Task<GarminActivitySplits> GetActivitySplitsAsync(long activityId, CancellationToken cancellationToken = default) =>
+        Guard(() => Client.GetActivitySplits(activityId, cancellationToken), "activity splits");
+
     private static DateTime ParseDate(string date, string paramName)
     {
         if (DateTime.TryParseExact(date, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
