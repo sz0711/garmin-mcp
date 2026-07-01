@@ -58,21 +58,26 @@ public static class GarminRestApi
         });
         api.MapGet("/scheduled-workouts", (IGarminConnectionProvider p, CancellationToken ct) =>
             TrainingPlanReader.BuildAsync(p.Service, LocalDate.Today(), ct));
+        // Check p.Metrics directly (not p.IsAuthenticated) — IsAuthenticated and Metrics are backed
+        // by two separate, unsynchronized fields on the shared singleton provider (set sequentially
+        // during login completion), so trusting IsAuthenticated as a proxy and then force-unwrapping
+        // Metrics has a narrow race window where a concurrent request could observe authenticated=true
+        // with Metrics still null, throwing instead of returning a clean 401.
         api.MapGet("/training-readiness", async (IGarminConnectionProvider p, string date, CancellationToken ct) =>
         {
-            if (!p.IsAuthenticated) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
-            return Results.Json((object?)await p.Metrics!.GetTrainingReadinessAsync(Day(date), ct) ?? new { message = "no data" });
+            if (p.Metrics is not { } metrics) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
+            return Results.Json((object?)await metrics.GetTrainingReadinessAsync(Day(date), ct) ?? new { message = "no data" });
         });
         api.MapGet("/training-status", async (IGarminConnectionProvider p, string date, CancellationToken ct) =>
         {
-            if (!p.IsAuthenticated) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
-            return Results.Json((object?)await p.Metrics!.GetTrainingStatusAsync(Day(date), ct) ?? new { message = "no data" });
+            if (p.Metrics is not { } metrics) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
+            return Results.Json((object?)await metrics.GetTrainingStatusAsync(Day(date), ct) ?? new { message = "no data" });
         });
         api.MapGet("/race-predictions", async (IGarminConnectionProvider p, CancellationToken ct) =>
         {
-            if (!p.IsAuthenticated) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
+            if (p.Metrics is not { } metrics) return Results.Problem(p.SetupUrl, statusCode: StatusCodes.Status401Unauthorized);
             var profile = await p.Service.GetProfileAsync(ct);
-            return Results.Json((object?)await p.Metrics!.GetRacePredictionsAsync(profile.DisplayName, ct) ?? new { message = "no data" });
+            return Results.Json((object?)await metrics.GetRacePredictionsAsync(profile.DisplayName, ct) ?? new { message = "no data" });
         });
     }
 
