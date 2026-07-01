@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.cs text diff=csharp
+*.sln text eol=crlf
+*.slnx text eol=crlf
+*.csproj text eol=crlf
+
+*.png binary
+*.ico binary
